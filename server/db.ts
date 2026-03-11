@@ -11,6 +11,7 @@ export const connectDB = async () => {
     console.log("MongoDB connected");
   } catch (error) {
     console.error("MongoDB connection error:", error);
-    process.exit(1);
+    console.error("Ensure your IP address is whitelisted in MongoDB Atlas (0.0.0.0/0 for all IPs).");
+    // Do not exit process, so the frontend can still load and show errors
   }
 };

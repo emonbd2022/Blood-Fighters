@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import { User } from "../models/User";
 import { auth, AuthRequest } from "../middleware/auth";
 
@@ -8,6 +9,10 @@ const router = express.Router();
 
 router.post("/register", async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed. Please check MongoDB IP Whitelist (allow 0.0.0.0/0)." });
+    }
+
     const { name, email, password, phone, bloodGroup, lat, lng } = req.body;
 
     const existingUser = await User.findOne({ email });
@@ -45,6 +50,10 @@ router.post("/register", async (req, res) => {
 
 router.post("/login", async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed. Please check MongoDB IP Whitelist (allow 0.0.0.0/0)." });
+    }
+
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });

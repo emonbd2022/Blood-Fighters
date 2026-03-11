@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import dotenv from "dotenv";
+import mongoose from "mongoose";
 import { connectDB } from "./server/db";
 import authRoutes from "./server/routes/auth";
 import requestRoutes from "./server/routes/requests";
@@ -27,7 +28,12 @@ async function startServer() {
 
   // Health check
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    res.json({ 
+      status: "ok", 
+      dbState: mongoose.connection.readyState,
+      hasMongoUri: !!process.env.MONGODB_URI,
+      hasJwtSecret: !!process.env.JWT_SECRET
+    });
   });
 
   // Vite middleware for development
