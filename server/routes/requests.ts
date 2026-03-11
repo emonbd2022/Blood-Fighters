@@ -1,8 +1,8 @@
 import express from "express";
-import { BloodRequest } from "../models/BloodRequest";
-import { auth, AuthRequest } from "../middleware/auth";
-import { User } from "../models/User";
-import { matchAndNotify } from "../services/notifications";
+import { BloodRequest } from "../models/BloodRequest.js";
+import { auth, AuthRequest } from "../middleware/auth.js";
+import { User } from "../models/User.js";
+import { matchAndNotify } from "../services/notifications.js";
 
 const router = express.Router();
 

@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import express from "express";
 import mongoose from "mongoose";
-import authRoutes from "../server/routes/auth";
-import requestRoutes from "../server/routes/requests";
+import authRoutes from "../server/routes/auth.js";
+import requestRoutes from "../server/routes/requests.js";
 
 const app = express();
 app.use(express.json());

@@ -1,12 +1,16 @@
 import express from "express";
 import multer from "multer";
-import { Donation } from "../models/Donation";
-import { auth, AuthRequest } from "../middleware/auth";
-import { User } from "../models/User";
-import { uploadImage } from "../services/cloudinary";
-import { generatePoster } from "../services/poster";
+import { Donation } from "../models/Donation.js";
+import { auth, AuthRequest } from "../middleware/auth.js";
+import { User } from "../models/User.js";
+import { uploadImage } from "../services/cloudinary.js";
+import { generatePoster } from "../services/poster.js";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 

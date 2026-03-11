@@ -3,10 +3,10 @@ import { createServer as createViteServer } from "vite";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
-import { connectDB } from "./server/db";
-import authRoutes from "./server/routes/auth";
-import requestRoutes from "./server/routes/requests";
-import donationRoutes from "./server/routes/donations";
+import { connectDB } from "./server/db.js";
+import authRoutes from "./server/routes/auth.js";
+import requestRoutes from "./server/routes/requests.js";
+import donationRoutes from "./server/routes/donations.js";
 
 dotenv.config();
 

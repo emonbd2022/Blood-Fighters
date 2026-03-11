@@ -1,7 +1,11 @@
 import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
-import { uploadImage } from "./cloudinary";
+import { uploadImage } from "./cloudinary.js";
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const generatePoster = async (donorName: string, bloodGroup: string, date: Date) => {
   const htmlContent = `

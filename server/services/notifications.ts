@@ -1,4 +1,4 @@
-import { User } from "../models/User";
+import { User } from "../models/User.js";
 import admin from "firebase-admin";
 
 // Initialize Firebase Admin (Mocked for preview if credentials are not provided)
