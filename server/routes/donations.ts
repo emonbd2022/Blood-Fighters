@@ -7,6 +7,7 @@ import { uploadImage } from "../services/cloudinary.js";
 import { generatePoster } from "../services/poster.js";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -15,7 +16,7 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 
 // Ensure uploads directory exists
-const uploadDir = path.join(__dirname, "../../uploads");
+const uploadDir = process.env.VERCEL ? path.join(os.tmpdir(), "uploads") : path.join(__dirname, "../../uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

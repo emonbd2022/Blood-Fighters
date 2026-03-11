@@ -1,6 +1,7 @@
 import puppeteer from "puppeteer";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { uploadImage } from "./cloudinary.js";
 import { fileURLToPath } from 'url';
 
@@ -40,11 +41,12 @@ export const generatePoster = async (donorName: string, bloodGroup: string, date
   await page.setContent(htmlContent);
   await page.setViewport({ width: 600, height: 800 });
   
-  const tempPath = path.join(__dirname, `../../uploads/poster-${Date.now()}.png`);
+  const uploadDir = process.env.VERCEL ? path.join(os.tmpdir(), "uploads") : path.join(__dirname, "../../uploads");
+  const tempPath = path.join(uploadDir, `poster-${Date.now()}.png`);
   
   // Ensure uploads directory exists
-  if (!fs.existsSync(path.join(__dirname, '../../uploads'))) {
-    fs.mkdirSync(path.join(__dirname, '../../uploads'), { recursive: true });
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
   }
 
   await page.screenshot({ path: tempPath });
