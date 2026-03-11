@@ -1,0 +1,5 @@
+{
+  "name": "Blood Fighters",
+  "description": "A full-stack MVP for blood donation matching, requests, and donor management.",
+  "requestFramePermissions": ["geolocation"]
+}
