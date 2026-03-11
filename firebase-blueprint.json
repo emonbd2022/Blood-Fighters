@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the blood donation platform.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "role", "createdAt"]
+    },
+    "BloodRequest": {
+      "title": "BloodRequest",
+      "description": "A request for blood donation.",
+      "type": "object",
+      "properties": {
+        "requesterId": { "type": "string" },
+        "requesterName": { "type": "string" },
+        "patientCondition": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "amount": { "type": "number" },
+        "hemoglobin": { "type": "string" },
+        "donationDate": { "type": "string" },
+        "donationTime": { "type": "string" },
+        "hospital": { "type": "string" },
+        "district": { "type": "string" },
+        "upazila": { "type": "string" },
+        "address": { "type": "string" },
+        "urgency": { "type": "string", "enum": ["Emergency", "Urgent", "Normal"] },
+        "contactName": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "notes": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "donated", "approved", "rejected"] },
+        "donorId": { "type": "string" },
+        "donorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requesterId", "requesterName", "patientCondition", "bloodGroup", "amount", "donationDate", "hospital", "district", "upazila", "urgency", "contactName", "contactPhone", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "body", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/bloodRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/BloodRequest" },
+      "description": "Stores blood requests."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Stores user notifications."
+    }
+  }
+}

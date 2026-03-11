@@ -1,19 +1,22 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import api from "../lib/api";
+import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db, signInWithGoogle, logout as firebaseLogout } from "../firebase";
+import toast from "react-hot-toast";
 
-interface User {
-  id: string;
-  name: string;
+export interface User {
+  uid: string;
+  displayName: string;
   email: string;
-  role: string;
+  photoURL: string;
   bloodGroup: string;
+  role: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
-  login: (token: string, user: User) => void;
-  logout: () => void;
+  loginWithGoogle: () => Promise<void>;
+  logout: () => Promise<void>;
   loading: boolean;
 }
 
@@ -21,40 +24,67 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadUser = async () => {
-      if (token) {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
         try {
-          const res = await api.get("/auth/me");
-          setUser({ id: res.data._id, name: res.data.name, email: res.data.email, role: res.data.role, bloodGroup: res.data.bloodGroup });
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          let userData: User;
+          if (userDoc.exists()) {
+            userData = userDoc.data() as User;
+          } else {
+            // Create new user profile
+            userData = {
+              uid: firebaseUser.uid,
+              displayName: firebaseUser.displayName || "Unknown User",
+              email: firebaseUser.email || "",
+              photoURL: firebaseUser.photoURL || "",
+              bloodGroup: "", // Can be updated later
+              role: "user",
+            };
+            await setDoc(userDocRef, {
+              ...userData,
+              createdAt: serverTimestamp(),
+            });
+          }
+          setUser(userData);
         } catch (error) {
-          console.error("Failed to load user", error);
-          logout();
+          console.error("Error fetching user data:", error);
+          toast.error("Failed to load user profile.");
         }
+      } else {
+        setUser(null);
       }
       setLoading(false);
-    };
-    loadUser();
-  }, [token]);
+    });
 
-  const login = (newToken: string, newUser: User) => {
-    localStorage.setItem("token", newToken);
-    setToken(newToken);
-    setUser(newUser);
+    return () => unsubscribe();
+  }, []);
+
+  const loginWithGoogle = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to sign in with Google");
+    }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    setToken(null);
-    setUser(null);
+  const logout = async () => {
+    try {
+      await firebaseLogout();
+      setUser(null);
+    } catch (error: any) {
+      toast.error("Failed to log out");
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
-      {children}
+    <AuthContext.Provider value={{ user, loginWithGoogle, logout, loading }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 };
