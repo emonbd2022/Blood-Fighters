@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import { BloodRequest } from "../models/BloodRequest.js";
 import { auth, AuthRequest } from "../middleware/auth.js";
 import { User } from "../models/User.js";
@@ -8,6 +9,9 @@ const router = express.Router();
 
 router.post("/", auth, async (req: AuthRequest, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed." });
+    }
     const { patientName, bloodGroup, unitsRequired, hospitalName, requiredTime, contactPerson, contactPhone, lat, lng, city } = req.body;
 
     const newRequest = new BloodRequest({
@@ -39,6 +43,9 @@ router.post("/", auth, async (req: AuthRequest, res) => {
 
 router.get("/", async (req, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed." });
+    }
     const { bloodGroup, city, lat, lng, radius } = req.query;
     let query: any = { status: "open" };
 
@@ -66,6 +73,9 @@ router.get("/", async (req, res) => {
 
 router.patch("/:id/status", auth, async (req: AuthRequest, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed." });
+    }
     const { status } = req.body;
     const request = await BloodRequest.findById(req.params.id);
 

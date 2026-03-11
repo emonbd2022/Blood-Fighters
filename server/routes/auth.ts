@@ -79,6 +79,9 @@ router.post("/login", async (req, res) => {
 
 router.get("/me", auth, async (req: AuthRequest, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed." });
+    }
     const user = await User.findById(req.user?.id).select("-password");
     res.json(user);
   } catch (error: any) {

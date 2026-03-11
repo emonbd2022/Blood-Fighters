@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import multer from "multer";
 import { Donation } from "../models/Donation.js";
 import { auth, AuthRequest } from "../middleware/auth.js";
@@ -25,6 +26,9 @@ const upload = multer({ dest: uploadDir }); // Temporary local storage before Cl
 
 router.post("/", auth, async (req: AuthRequest, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed." });
+    }
     const { requestId, donationDate } = req.body;
 
     const donation = new Donation({
@@ -46,6 +50,9 @@ router.post("/", auth, async (req: AuthRequest, res) => {
 
 router.get("/me", auth, async (req: AuthRequest, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed." });
+    }
     const donations = await Donation.find({ donorId: req.user?.id }).sort({ donationDate: -1 }).populate("requestId");
     res.json(donations);
   } catch (error: any) {
@@ -56,6 +63,9 @@ router.get("/me", auth, async (req: AuthRequest, res) => {
 // Upload proof and generate poster
 router.post("/:id/proof", auth, upload.single("proof"), async (req: AuthRequest, res) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({ message: "Database connection failed." });
+    }
     const donation = await Donation.findById(req.params.id);
     if (!donation) return res.status(404).json({ message: "Donation not found" });
 
