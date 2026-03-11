@@ -56,4 +56,23 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  startServer();
+}
+
+// Export for Vercel Serverless
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use("/api/auth", authRoutes);
+app.use("/api/requests", requestRoutes);
+app.use("/api/donations", donationRoutes);
+app.get("/api/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    hasMongoUri: !!process.env.MONGODB_URI,
+    hasJwtSecret: !!process.env.JWT_SECRET
+  });
+});
+
+export default app;
