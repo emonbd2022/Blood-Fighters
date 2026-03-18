@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { CheckCircle2, AlertCircle, Droplet, Calendar, ShieldCheck } from 'lucide-react';
 import { format } from 'date-fns';
 
+import { checkEligibility } from '../utils/eligibility';
+
 interface EligibilitySummaryProps {
   userProfile: any;
   onConfirm: () => void;
@@ -11,10 +13,10 @@ interface EligibilitySummaryProps {
 }
 
 export default function EligibilitySummary({ userProfile, onConfirm, onCancel, onEdit }: EligibilitySummaryProps) {
-  const lastDonation = userProfile.lastDonationDate ? new Date(userProfile.lastDonationDate) : null;
-  const threeMonthsAgo = new Date();
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-  const isEligible = !lastDonation || lastDonation < threeMonthsAgo;
+  const isEligible = checkEligibility(userProfile.lastDonationDate);
+  const lastDonation = userProfile.lastDonationDate && !['less_than_3_months', '3_to_6_months', 'more_than_6_months'].includes(userProfile.lastDonationDate) 
+    ? new Date(userProfile.lastDonationDate) 
+    : null;
 
   return (
     <motion.div
@@ -49,10 +51,15 @@ export default function EligibilitySummary({ userProfile, onConfirm, onCancel, o
               <div className="flex items-center space-x-2">
                 <Calendar className="w-4 h-4 text-blue-500" />
                 <span className="text-sm font-medium text-slate-700">Last: <span className="font-bold">{(() => {
-                  if (!lastDonation) return 'Never';
+                  if (!userProfile.lastDonationDate) return 'Never';
+                  if (userProfile.lastDonationDate === 'less_than_3_months') return '< 3 months';
+                  if (userProfile.lastDonationDate === '3_to_6_months') return '3-6 months';
+                  if (userProfile.lastDonationDate === 'more_than_6_months') return '> 6 months';
+                  
                   try {
-                    if (isNaN(lastDonation.getTime())) return 'Unknown';
-                    return format(lastDonation, 'dd MMM yyyy');
+                    const date = new Date(userProfile.lastDonationDate);
+                    if (isNaN(date.getTime())) return 'Unknown';
+                    return format(date, 'dd MMM yyyy');
                   } catch (e) {
                     return 'Unknown';
                   }

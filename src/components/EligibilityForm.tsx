@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Shield, Navigation } from 'lucide-react';
 
+import { checkEligibility } from '../utils/eligibility';
+
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 interface EligibilityFormProps {
@@ -69,20 +71,9 @@ export default function EligibilityForm({ initialData, onSubmit, onCancel }: Eli
       }
     } else if (step === 3) {
       if (formData.donatedBefore) {
-        if (formData.lastDonation === 'less_than_3_months') {
+        if (!checkEligibility(formData.lastDonation)) {
           setDisqualification("You must wait at least 3 months between donations. / রক্তদানের মাঝে অন্তত ৩ মাসের বিরতি থাকতে হবে।");
           return;
-        }
-        
-        // Check actual date if it's an ISO string
-        if (formData.lastDonation && !['less_than_3_months', '3_to_6_months', 'more_than_6_months'].includes(formData.lastDonation)) {
-          const lastDate = new Date(formData.lastDonation);
-          const threeMonthsAgo = new Date();
-          threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-          if (lastDate > threeMonthsAgo) {
-            setDisqualification("You must wait at least 3 months between donations. / রক্তদানের মাঝে অন্তত ৩ মাসের বিরতি থাকতে হবে।");
-            return;
-          }
         }
       }
     } else if (step === 4) {
