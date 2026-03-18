@@ -13,6 +13,9 @@ export interface UserProfile {
   fcmToken?: string;
   eligibilityData?: any;
   lastDonationDate?: string;
+  totalDonations?: number;
+  donorScore?: number;
+  isVerified?: boolean;
   isProfileComplete: boolean;
   lastReadNotifications?: Date;
   createdAt: Date;
@@ -33,6 +36,9 @@ export interface Donor {
   gmail?: string;
   isAvailable: boolean;
   lastDonationDate?: string;
+  totalDonations?: number;
+  donorScore?: number;
+  isVerified?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

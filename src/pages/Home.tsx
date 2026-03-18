@@ -3,12 +3,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
 import { BloodRequest } from '../types';
 import { motion } from 'framer-motion';
-import { MapPin, Calendar, Phone, Droplet, Clock, CheckCircle2, Search, Share2, Check, Map as MapIcon, List, AlertTriangle, Navigation, MessageCircle, Mail, ChevronLeft, ChevronRight, User, AlertCircle } from 'lucide-react';
+import { MapPin, Calendar, Phone, Droplet, Clock, CheckCircle2, Search, Share2, Check, Map as MapIcon, List, AlertTriangle, Navigation, MessageCircle, Mail, ChevronLeft, ChevronRight, User, AlertCircle, ShieldCheck, Award } from 'lucide-react';
 import { format } from 'date-fns';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { collection, query, getDocs, orderBy, doc, updateDoc, serverTimestamp, where, addDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, doc, updateDoc, serverTimestamp, where, addDoc, arrayUnion, increment } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -77,14 +77,21 @@ export default function Home() {
   const itemsPerPage = 6;
 
   const [hasMadeRequest, setHasMadeRequest] = useState(false);
+  const [requestedBloodGroups, setRequestedBloodGroups] = useState<string[]>([]);
 
   useEffect(() => {
     const checkUserRequests = async () => {
       if (!userProfile) return;
       try {
-        const q = query(collection(db, 'bloodRequests'), where('requesterUid', '==', userProfile.uid));
+        const q = query(
+          collection(db, 'bloodRequests'), 
+          where('requesterUid', '==', userProfile.uid)
+        );
         const querySnapshot = await getDocs(q);
-        setHasMadeRequest(!querySnapshot.empty);
+        const activeRequests = querySnapshot.docs.filter(doc => doc.data().status !== 'fulfilled');
+        setHasMadeRequest(activeRequests.length > 0);
+        const groups = activeRequests.map(doc => doc.data().bloodGroup);
+        setRequestedBloodGroups([...new Set(groups)]);
       } catch (error) {
         console.error('Error checking user requests:', error);
       }
@@ -261,11 +268,14 @@ export default function Home() {
                           (donor.location || '').toLowerCase().includes(query);
     const matchesBloodGroup = bloodGroupFilter ? donor.bloodGroup === bloodGroupFilter : true;
     
+    // Privacy feature: Only show donors matching user's active requests
+    const matchesUserRequest = requestedBloodGroups.includes(donor.bloodGroup);
+    
     // We don't have coordinates for donors yet, but if we did, we could filter by distance here.
     // For now, just return true for distance.
     const matchesDistance = true;
 
-    return matchesSearch && matchesBloodGroup && matchesDistance;
+    return matchesSearch && matchesBloodGroup && matchesDistance && matchesUserRequest;
   });
 
   const getUrgencyColor = (urgency: string) => {
@@ -346,6 +356,8 @@ export default function Home() {
         
         await updateDoc(userRef, {
           lastDonationDate: todayIso,
+          totalDonations: increment(1),
+          donorScore: increment(10),
           updatedAt: serverTimestamp()
         });
 
@@ -354,6 +366,8 @@ export default function Home() {
         if (donorDoc && donorDoc.id) {
           await updateDoc(doc(db, 'donors', donorDoc.id), {
             lastDonationDate: todayIso,
+            totalDonations: increment(1),
+            donorScore: increment(10),
             updatedAt: serverTimestamp()
           });
         }
@@ -424,15 +438,6 @@ export default function Home() {
                 {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
                   <option key={bg} value={bg}>{bg}</option>
                 ))}
-              </select>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base border-slate-200 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm rounded-xl bg-white shadow-sm"
-              >
-                <option value="all">All Status</option>
-                <option value="pending">Not Fulfilled</option>
-                <option value="fulfilled">Fulfilled</option>
               </select>
             </>
           )}
@@ -729,8 +734,10 @@ export default function Home() {
         ) : filteredDonors.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-2xl border border-slate-100 shadow-sm">
             <Droplet className="mx-auto h-12 w-12 text-slate-300" />
-            <h3 className="mt-2 text-sm font-medium text-slate-900">No donors found</h3>
-            <p className="mt-1 text-sm text-slate-500">Try adjusting your search terms.</p>
+            <h3 className="mt-2 text-sm font-medium text-slate-900">No matching donors found</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              We couldn't find any donors matching your requested blood group(s): {requestedBloodGroups.join(', ')}.
+            </p>
           </div>
         ) : (
           <div className="space-y-6">
@@ -758,7 +765,14 @@ export default function Home() {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold text-slate-900 truncate">{donor.displayName}</h3>
+                        <div className="flex items-center space-x-1 truncate">
+                          <h3 className="text-lg font-bold text-slate-900 truncate">{donor.displayName}</h3>
+                          {donor.isVerified && (
+                            <span title="Verified Donor">
+                              <ShieldCheck className="w-4 h-4 text-blue-500 fill-blue-500/10" />
+                            </span>
+                          )}
+                        </div>
                         {donor.donorId && (
                           <span className="text-[10px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
                             {donor.donorId}
@@ -778,6 +792,23 @@ export default function Home() {
                             {donor.lastDonationDate && !checkEligibility(donor.lastDonationDate) ? 'In Cool-down' : 'Unavailable'}
                           </span>
                         )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Donations</p>
+                      <div className="flex items-center text-slate-900">
+                        <Droplet className="w-4 h-4 mr-1.5 text-red-500" />
+                        <span className="text-sm font-bold">{donor.totalDonations || 0}</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                      <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Donor Score</p>
+                      <div className="flex items-center text-slate-900">
+                        <Award className="w-4 h-4 mr-1.5 text-amber-500" />
+                        <span className="text-sm font-bold">{donor.donorScore || 0}</span>
                       </div>
                     </div>
                   </div>

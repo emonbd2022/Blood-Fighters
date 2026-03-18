@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { BloodRequest } from '../types';
 import { motion } from 'framer-motion';
-import { User, MapPin, Phone, Droplet, CheckCircle, Calendar, Clock, CheckCircle2, FileText, Navigation, MessageCircle, Mail } from 'lucide-react';
+import { User, MapPin, Phone, Droplet, CheckCircle, Calendar, Clock, CheckCircle2, FileText, Navigation, MessageCircle, Mail, ShieldCheck, Award } from 'lucide-react';
 import { format } from 'date-fns';
 import EligibilityForm from '../components/EligibilityForm';
-import { doc, updateDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp, addDoc } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp, addDoc, increment } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useNavigate } from 'react-router-dom';
@@ -167,6 +167,9 @@ export default function Profile() {
         gmail: formData.gmail,
         lastDonationDate: formData.lastDonationDate,
         isAvailable: isAvailable,
+        totalDonations: userProfile.totalDonations || 0,
+        donorScore: userProfile.donorScore || 0,
+        isVerified: userProfile.isVerified || false,
         createdAt: userProfile.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp()
       }, { merge: true });
@@ -218,6 +221,9 @@ export default function Profile() {
         phone: eligibilityData.phone,
         lastDonationDate: eligibilityData.lastDonation || '',
         isAvailable: isAvailable,
+        totalDonations: userProfile.totalDonations || 0,
+        donorScore: userProfile.donorScore || 0,
+        isVerified: userProfile.isVerified || false,
         createdAt: userProfile.createdAt || serverTimestamp(),
         updatedAt: serverTimestamp()
       }, { merge: true });
@@ -277,6 +283,8 @@ export default function Profile() {
         
         await updateDoc(userRef, {
           lastDonationDate: todayIso,
+          totalDonations: increment(1),
+          donorScore: increment(10),
           updatedAt: serverTimestamp()
         });
 
@@ -285,6 +293,8 @@ export default function Profile() {
         if (donorDoc && donorDoc.id) {
           await updateDoc(doc(db, 'donors', donorDoc.id), {
             lastDonationDate: todayIso,
+            totalDonations: increment(1),
+            donorScore: increment(10),
             updatedAt: serverTimestamp()
           });
         }
@@ -343,6 +353,11 @@ export default function Profile() {
           <div className="flex flex-col items-center sm:items-start">
             <div className="flex flex-col sm:flex-row items-center gap-2">
               <h2 className="text-2xl font-bold text-slate-900">{userProfile.displayName}</h2>
+              {userProfile.isVerified && (
+                <span title="Verified Donor">
+                  <ShieldCheck className="w-5 h-5 text-blue-500 fill-blue-500/10" />
+                </span>
+              )}
               {userProfile.donorId && (
                 <span className="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg border border-slate-300">
                   {userProfile.donorId}
@@ -350,15 +365,26 @@ export default function Profile() {
               )}
             </div>
             <p className="text-slate-500">{userProfile.email}</p>
-            {userProfile.isProfileComplete ? (
-              <span className="inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                <CheckCircle className="w-3 h-3 mr-1" /> Profile Complete
-              </span>
-            ) : (
-              <span className="inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                Incomplete Profile
-              </span>
-            )}
+            
+            <div className="flex flex-wrap justify-center sm:justify-start gap-3 mt-3">
+              <div className="flex items-center bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
+                <Droplet className="w-3.5 h-3.5 mr-1.5 text-red-500" />
+                <span className="text-xs font-bold text-slate-700">{userProfile.totalDonations || 0} Donations</span>
+              </div>
+              <div className="flex items-center bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
+                <Award className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+                <span className="text-xs font-bold text-slate-700">{userProfile.donorScore || 0} Score</span>
+              </div>
+              {userProfile.isProfileComplete ? (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                  <CheckCircle className="w-3 h-3 mr-1" /> Profile Complete
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                  Incomplete Profile
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -554,6 +580,39 @@ export default function Profile() {
         transition={{ delay: 0.1 }}
         className="space-y-8"
       >
+        <div>
+          <h3 className="text-xl font-bold text-slate-900 mb-4">Donation Impact</h3>
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <p className="text-sm text-slate-500">Lives Impacted</p>
+                <p className="text-3xl font-bold text-slate-900">{(userProfile.totalDonations || 0) * 3}+</p>
+              </div>
+              <div className="h-12 w-12 bg-red-50 rounded-2xl flex items-center justify-center">
+                <Droplet className="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                  <span>Next Milestone</span>
+                  <span>{userProfile.totalDonations || 0} / {((Math.floor((userProfile.totalDonations || 0) / 5) + 1) * 5)}</span>
+                </div>
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-red-500 transition-all duration-500" 
+                    style={{ width: `${((userProfile.totalDonations || 0) % 5) * 20}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5 italic">
+                  Each donation can save up to 3 lives. You're doing great!
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div>
           <h3 className="text-xl font-bold text-slate-900 mb-4">My Donation History</h3>
           {loadingHistory ? (
