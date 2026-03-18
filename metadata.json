@@ -1,5 +1,5 @@
 {
-  "name": "Blood Fighters",
-  "description": "A full-stack MVP for blood donation matching, requests, and donor management.",
+  "name": "Blood Fighters of Bhairab",
+  "description": "A dedicated platform for blood donation matching in Bhairab.",
   "requestFramePermissions": ["geolocation"]
 }

@@ -1,50 +1,43 @@
-import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { Toaster } from "react-hot-toast";
-import { AuthProvider, useAuth } from "./context/AuthContext";
-import { LanguageProvider } from "./context/LanguageContext";
-import Navbar from "./components/Navbar";
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Requests from "./pages/Requests";
-import CreateRequest from "./pages/CreateRequest";
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ChatProvider } from './contexts/ChatContext';
+import Layout from './components/Layout';
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Profile from './pages/Profile';
+import CreateRequest from './pages/CreateRequest';
+import FAQ from './pages/FAQ';
+import Terms from './pages/Terms';
+import { Toaster } from 'react-hot-toast';
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div></div>;
-  if (!user) return <Navigate to="/login" />;
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
   return <>{children}</>;
-};
+}
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <ChatProvider>
         <Router>
-          <div className="min-h-screen flex flex-col bg-gray-50 font-sans">
-            <Navbar />
-            <main className="flex-grow">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/requests" element={<Requests />} />
-                <Route path="/requests/new" element={
-                  <ProtectedRoute>
-                    <CreateRequest />
-                  </ProtectedRoute>
-                } />
-                <Route path="/dashboard" element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                } />
-              </Routes>
-            </main>
-            <Toaster position="top-center" />
-          </div>
+          <Toaster position="top-right" />
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+              <Route index element={<Home />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="request" element={<CreateRequest />} />
+              <Route path="edit-request/:id" element={<CreateRequest />} />
+              <Route path="faq" element={<FAQ />} />
+              <Route path="terms" element={<Terms />} />
+            </Route>
+          </Routes>
         </Router>
-      </AuthProvider>
-    </LanguageProvider>
+      </ChatProvider>
+    </AuthProvider>
   );
 }

@@ -5,56 +5,119 @@
       "description": "A user of the blood donation platform.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "displayName": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "photoURL": { "type": "string" },
-        "bloodGroup": { "type": "string" },
-        "role": { "type": "string", "enum": ["user", "admin"] },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "uid": { "type": "string", "description": "The user's unique ID." },
+        "donorId": { "type": "string", "description": "The user's unique readable ID (e.g. ROKTO-1234)." },
+        "displayName": { "type": "string", "description": "The user's display name." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "photoURL": { "type": "string", "description": "The user's profile photo URL." },
+        "bloodGroup": { "type": "string", "enum": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"], "description": "The user's blood group." },
+        "location": { "type": "string", "description": "The user's location." },
+        "phone": { "type": "string", "description": "The user's phone number." },
+        "messengerId": { "type": "string", "description": "The user's Facebook Messenger ID." },
+        "whatsapp": { "type": "string", "description": "The user's WhatsApp number." },
+        "gmail": { "type": "string", "description": "The user's Gmail address." },
+        "fcmToken": { "type": "string", "description": "The user's Firebase Cloud Messaging token." },
+        "eligibilityData": { "type": "object", "description": "The user's eligibility form answers." },
+        "lastDonationDate": { "type": "string", "description": "The date of the user's last donation." },
+        "isProfileComplete": { "type": "boolean", "description": "Whether the user has completed their profile." },
+        "lastReadNotifications": { "type": "string", "format": "date-time", "description": "When the user last read notifications." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the user was last updated." }
       },
-      "required": ["uid", "displayName", "email", "role", "createdAt"]
+      "required": ["uid", "displayName", "email", "isProfileComplete", "createdAt", "updatedAt"]
     },
     "BloodRequest": {
       "title": "BloodRequest",
       "description": "A request for blood donation.",
       "type": "object",
       "properties": {
-        "requesterId": { "type": "string" },
-        "requesterName": { "type": "string" },
-        "patientCondition": { "type": "string" },
-        "bloodGroup": { "type": "string" },
-        "amount": { "type": "number" },
-        "hemoglobin": { "type": "string" },
-        "donationDate": { "type": "string" },
-        "donationTime": { "type": "string" },
-        "hospital": { "type": "string" },
-        "district": { "type": "string" },
-        "upazila": { "type": "string" },
-        "address": { "type": "string" },
-        "urgency": { "type": "string", "enum": ["Emergency", "Urgent", "Normal"] },
-        "contactName": { "type": "string" },
-        "contactPhone": { "type": "string" },
-        "notes": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "accepted", "donated", "approved", "rejected"] },
-        "donorId": { "type": "string" },
-        "donorName": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "requesterUid": { "type": "string", "description": "The UID of the user who created the request." },
+        "requesterName": { "type": "string", "description": "The name of the user who created the request." },
+        "requesterPhoto": { "type": "string", "description": "The photo URL of the user who created the request." },
+        "patientIssue": { "type": "string", "description": "The patient's issue (রোগীর সমস্যা)." },
+        "guardianName": { "type": "string", "description": "The name of the patient's guardian (রোগীর অভিভাবকের নাম)." },
+        "bloodGroup": { "type": "string", "enum": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"], "description": "The requested blood group (রক্তের গ্রুপ)." },
+        "amount": { "type": "string", "description": "The amount of blood needed (রক্তের পরিমাণ)." },
+        "hospitalName": { "type": "string", "description": "The name of the hospital (হাসপাতালের নাম)." },
+        "date": { "type": "string", "description": "The date of blood donation (রক্তদানের তারিখ)." },
+        "location": { "type": "string", "description": "The location for blood donation (রক্তদানের স্থান)." },
+        "contact": { "type": "string", "description": "The contact number (যোগাযোগ)." },
+        "urgency": { "type": "string", "enum": ["High", "Medium", "Low"], "description": "The urgency of the request." },
+        "coordinates": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          },
+          "description": "The geographical coordinates of the request location."
+        },
+        "status": { "type": "string", "enum": ["pending", "fulfilled"], "description": "The status of the request." },
+        "fulfilledBy": { "type": "string", "description": "The name or ID of the donor who fulfilled the request." },
+        "fulfilledByUid": { "type": "string", "description": "The UID of the donor who fulfilled the request." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the request was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the request was last updated." }
       },
-      "required": ["requesterId", "requesterName", "patientCondition", "bloodGroup", "amount", "donationDate", "hospital", "district", "upazila", "urgency", "contactName", "contactPhone", "status", "createdAt"]
+      "required": ["requesterUid", "requesterName", "patientIssue", "bloodGroup", "amount", "date", "location", "contact", "urgency", "status", "createdAt", "updatedAt"]
     },
-    "Notification": {
-      "title": "Notification",
-      "description": "A notification for a user.",
+    "Donor": {
+      "title": "Donor",
+      "description": "A public profile for a blood donor.",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
-        "title": { "type": "string" },
-        "body": { "type": "string" },
-        "read": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "uid": { "type": "string", "description": "The unique identifier of the user." },
+        "donorId": { "type": "string", "description": "The user's unique readable ID (e.g. ROKTO-1234)." },
+        "displayName": { "type": "string", "description": "The display name of the donor." },
+        "photoURL": { "type": "string", "description": "The URL of the donor's profile photo." },
+        "bloodGroup": { "type": "string", "description": "The blood group of the donor." },
+        "location": { "type": "string", "description": "The location of the donor." },
+        "messengerId": { "type": "string", "description": "The donor's Facebook Messenger ID." },
+        "whatsapp": { "type": "string", "description": "The donor's WhatsApp number." },
+        "gmail": { "type": "string", "description": "The donor's Gmail address." },
+        "isAvailable": { "type": "boolean", "description": "Whether the donor is currently available to donate." },
+        "lastDonationDate": { "type": "string", "description": "The date of the donor's last donation." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The timestamp when the donor profile was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "The timestamp when the donor profile was last updated." }
       },
-      "required": ["userId", "title", "body", "read", "createdAt"]
+      "required": ["uid", "displayName", "bloodGroup", "location", "isAvailable", "createdAt", "updatedAt"]
+    },
+    "DonationRecord": {
+      "title": "DonationRecord",
+      "description": "A record of a successful blood donation.",
+      "type": "object",
+      "properties": {
+        "donorUid": { "type": "string", "description": "The UID of the donor." },
+        "recipientUid": { "type": "string", "description": "The UID of the recipient." },
+        "requestId": { "type": "string", "description": "The ID of the blood request." },
+        "date": { "type": "string", "description": "The date of donation." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the record was created." }
+      },
+      "required": ["donorUid", "recipientUid", "requestId", "date", "createdAt"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "A chat conversation between two users.",
+      "type": "object",
+      "properties": {
+        "participants": { "type": "array", "items": { "type": "string" }, "description": "The UIDs of the participants in the chat." },
+        "participantNames": { "type": "object", "description": "A map of participant UIDs to their display names." },
+        "participantPhotos": { "type": "object", "description": "A map of participant UIDs to their photo URLs." },
+        "lastMessage": { "type": "string", "description": "The text of the last message sent in the chat." },
+        "lastMessageTime": { "type": "string", "format": "date-time", "description": "The timestamp of the last message sent in the chat." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The timestamp when the chat was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "The timestamp when the chat was last updated." }
+      },
+      "required": ["participants", "participantNames", "participantPhotos", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message sent in a chat conversation.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string", "description": "The UID of the user who sent the message." },
+        "text": { "type": "string", "description": "The text of the message." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "The timestamp when the message was sent." }
+      },
+      "required": ["senderId", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -62,13 +125,25 @@
       "schema": { "$ref": "#/entities/User" },
       "description": "Stores user profiles."
     },
-    "/bloodRequests/{requestId}": {
+    "/blood_requests/{requestId}": {
       "schema": { "$ref": "#/entities/BloodRequest" },
-      "description": "Stores blood requests."
+      "description": "Stores blood donation requests."
     },
-    "/notifications/{notificationId}": {
-      "schema": { "$ref": "#/entities/Notification" },
-      "description": "Stores user notifications."
+    "/donors/{donorId}": {
+      "schema": { "$ref": "#/entities/Donor" },
+      "description": "Stores public donor profiles."
+    },
+    "/donation_history/{recordId}": {
+      "schema": { "$ref": "#/entities/DonationRecord" },
+      "description": "Stores donation history records."
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/Chat" },
+      "description": "Stores chat conversations."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Stores messages within a chat conversation."
     }
   }
 }
