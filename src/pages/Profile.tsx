@@ -20,6 +20,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [myRequests, setMyRequests] = useState<BloodRequest[]>([]);
+  const [pendingVerifications, setPendingVerifications] = useState<BloodRequest[]>([]);
   const [donationHistory, setDonationHistory] = useState<DonationRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [showEligibilityForm, setShowEligibilityForm] = useState(!userProfile?.isProfileComplete);
@@ -119,7 +120,31 @@ export default function Profile() {
       }
     };
 
+    const fetchPendingVerifications = async () => {
+      try {
+        const q = query(
+          collection(db, 'bloodRequests'),
+          where('fulfilledByUid', '==', userProfile.uid),
+          where('status', '==', 'pending_fulfillment')
+        );
+        const querySnapshot = await getDocs(q);
+        const mappedData = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            id: doc.id,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date()
+          };
+        });
+        setPendingVerifications(mappedData as any);
+      } catch (error) {
+        console.error('Error fetching pending verifications:', error);
+      }
+    };
+
     fetchMyRequests();
+    fetchPendingVerifications();
   }, [userProfile]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -308,6 +333,79 @@ export default function Profile() {
     }
   };
 
+  const handleApproveFulfillment = async (request: BloodRequest) => {
+    if (!userProfile || !request.id || loading) return;
+    
+    setLoading(true);
+    try {
+      const requestRef = doc(db, 'bloodRequests', request.id);
+      const userRef = doc(db, 'users', userProfile.uid);
+      const donorRef = doc(db, 'donors', userProfile.uid);
+      
+      const today = new Date();
+      const todayIso = today.toISOString();
+      
+      // 1. Update the blood request to 'fulfilled'
+      await updateDoc(requestRef, {
+        status: 'fulfilled',
+        updatedAt: serverTimestamp()
+      });
+      
+      // 2. Update donor's stats and last donation date
+      await updateDoc(userRef, {
+        lastDonationDate: todayIso,
+        totalDonations: increment(1),
+        donorScore: increment(10),
+        updatedAt: serverTimestamp()
+      });
+      
+      // 3. Update public donor profile
+      await setDoc(donorRef, {
+        lastDonationDate: todayIso,
+        totalDonations: increment(1),
+        donorScore: increment(10),
+        isAvailable: false, // Automatically set to unavailable after donation
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      
+      // 4. Create donation history record
+      await addDoc(collection(db, 'donation_history'), {
+        donorUid: userProfile.uid,
+        recipientUid: request.requesterUid,
+        recipientName: request.requesterName,
+        requestId: request.id,
+        date: serverTimestamp(),
+        bloodGroup: request.bloodGroup,
+        location: request.location,
+        hospitalName: request.hospitalName || '',
+        donorDonationCount: (userProfile.totalDonations || 0) + 1,
+        donorGender: userProfile.gender || '',
+        createdAt: serverTimestamp()
+      });
+      
+      // 5. Send notification to recipient
+      await addDoc(collection(db, 'notifications'), {
+        userId: request.requesterUid,
+        title: 'Donation Verified',
+        message: `${userProfile.displayName} has verified the donation for your request.`,
+        type: 'donation_verified',
+        requestId: request.id,
+        fromUid: userProfile.uid,
+        read: false,
+        createdAt: serverTimestamp()
+      });
+      
+      toast.success('Donation verified successfully!');
+      setPendingVerifications(prev => prev.filter(p => p.id !== request.id));
+      await refreshProfile();
+    } catch (error) {
+      console.error('Error approving fulfillment:', error);
+      toast.error('Failed to verify donation');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const confirmFulfill = async () => {
     if (!fulfillModalOpen || !userProfile) return;
     try {
@@ -326,67 +424,39 @@ export default function Profile() {
         }
       }
 
+      if (!donorUid) {
+        toast.error('Please select a valid donor from the list or search results.');
+        return;
+      }
+
       await updateDoc(requestRef, {
-        status: 'fulfilled',
+        status: 'pending_fulfillment',
         fulfilledBy: fulfilledBy || 'Other Donor',
+        fulfilledByUid: donorUid,
         updatedAt: serverTimestamp()
       });
 
-      // If we identified a donor, update their last donation date and create a donation record
-      if (donorUid) {
-        const userRef = doc(db, 'users', donorUid);
-        const donorRef = doc(db, 'donors', donorUid);
-        
-        const today = new Date();
-        const todayIso = today.toISOString();
-        
-        await updateDoc(userRef, {
-          lastDonationDate: todayIso,
-          totalDonations: increment(1),
-          donorScore: increment(10),
-          updatedAt: serverTimestamp()
-        });
-
-        // Also update the public donor profile if it exists
-        const donorDoc = donors.find(d => d.uid === donorUid);
-        if (donorDoc) {
-          const donorProfileRef = doc(db, 'donors', donorUid);
-          await updateDoc(donorProfileRef, {
-            lastDonationDate: todayIso,
-            totalDonations: increment(1),
-            donorScore: increment(10),
-            updatedAt: serverTimestamp()
-          });
-        }
-
-        // Create donation record
-        const request = myRequests.find(r => r.id === fulfillModalOpen);
-        if (request) {
-          const currentDonations = donorDoc ? (donorDoc.totalDonations || 0) + 1 : 1;
-          await addDoc(collection(db, 'donation_history'), {
-            donorUid: donorUid,
-            recipientUid: userProfile.uid,
-            recipientName: userProfile.displayName,
-            requestId: fulfillModalOpen,
-            date: serverTimestamp(),
-            bloodGroup: request.bloodGroup,
-            location: request.location,
-            hospitalName: request.hospitalName || '',
-            donorDonationCount: currentDonations,
-            donorGender: donorDoc?.gender || '',
-            createdAt: serverTimestamp()
-          });
-        }
-      }
+      // Send notification to the donor for verification
+      await addDoc(collection(db, 'notifications'), {
+        userId: donorUid,
+        title: 'Donation Verification Required',
+        message: `${userProfile.displayName} marked their request as fulfilled by you. Please verify this donation in your profile.`,
+        type: 'fulfillment_verification',
+        requestId: fulfillModalOpen,
+        fromUid: userProfile.uid,
+        read: false,
+        createdAt: serverTimestamp()
+      });
       
       // Update local state
       setMyRequests(myRequests.map(req => 
-        req.id === fulfillModalOpen ? { ...req, status: 'fulfilled', fulfilledBy: fulfilledBy || 'Other Donor' } : req
+        req.id === fulfillModalOpen ? { ...req, status: 'pending_fulfillment', fulfilledBy: fulfilledBy || 'Other Donor', fulfilledByUid: donorUid } : req
       ));
       
       setFulfillModalOpen(null);
       setFulfilledBy('');
       setDonorSearchResults([]);
+      toast.success('Verification request sent to the donor!');
     } catch (error) {
       if (error instanceof Error && error.message.includes('Firestore Error')) throw error;
       handleFirestoreError(error, OperationType.UPDATE, `bloodRequests/${fulfillModalOpen}`);
@@ -495,6 +565,56 @@ export default function Profile() {
             </div>
           </div>
         </div>
+
+        {/* Pending Verifications */}
+        {pendingVerifications.length > 0 && (
+          <div className="p-6 border-b border-slate-100">
+            <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center">
+              <CheckCircle2 className="w-5 h-5 mr-2 text-amber-500" /> Pending Donation Verifications
+            </h3>
+            <div className="space-y-4">
+              {pendingVerifications.map((req) => (
+                <div key={req.id} className="bg-amber-50 rounded-xl p-4 border border-amber-100 flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{req.requesterName} marked you as donor</p>
+                    <p className="text-xs text-slate-600 mt-1">Issue: {req.patientIssue} | Blood: {req.bloodGroup}</p>
+                    <p className="text-[10px] text-slate-400 mt-1">{format(req.updatedAt, 'MMM d, yyyy h:mm a')}</p>
+                  </div>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={() => handleApproveFulfillment(req)}
+                      disabled={loading}
+                      className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!req.id) return;
+                        try {
+                          await updateDoc(doc(db, 'bloodRequests', req.id), {
+                            status: 'pending',
+                            fulfilledBy: '',
+                            fulfilledByUid: '',
+                            updatedAt: serverTimestamp()
+                          });
+                          setPendingVerifications(prev => prev.filter(p => p.id !== req.id));
+                          toast.success('Verification declined');
+                        } catch (e) {
+                          toast.error('Failed to decline');
+                        }
+                      }}
+                      disabled={loading}
+                      className="flex-1 sm:flex-none px-4 py-2 bg-slate-200 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {showEligibilityForm ? (
           <EligibilityForm 

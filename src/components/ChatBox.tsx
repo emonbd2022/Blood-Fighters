@@ -100,6 +100,14 @@ export default function ChatBox({ recipientId, recipientName, recipientPhoto, on
     if (chatId && userProfile && messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg.senderId !== userProfile.uid) {
+        // Play sound for incoming message if chat is open
+        try {
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+          audio.play().catch(e => console.log('Audio play failed:', e));
+        } catch (e) {
+          // Ignore
+        }
+
         setDoc(doc(db, 'chats', chatId), {
           [`lastRead.${userProfile.uid}`]: serverTimestamp()
         }, { merge: true }).catch(err => console.error("Failed to update lastRead", err));

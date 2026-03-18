@@ -190,7 +190,12 @@ async function startServer() {
     app.use(vite.middlewares);
     
     // Fallback for SPA in development
-    app.use('*', async (req, res, next) => {
+    app.get('*', async (req, res, next) => {
+      // Skip API routes
+      if (req.originalUrl.startsWith('/api')) {
+        return next();
+      }
+      
       const url = req.originalUrl;
       try {
         let template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');

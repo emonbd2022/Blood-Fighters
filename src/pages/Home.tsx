@@ -290,11 +290,13 @@ export default function Home() {
     // Privacy feature: Only show donors matching user's active requests
     const matchesUserRequest = requestedBloodGroups.includes(donor.bloodGroup);
     
+    // Eligibility check: Only show donors who are eligible to donate (3 months cool-down)
+    const isEligible = checkEligibility(donor.lastDonationDate);
+    
     // We don't have coordinates for donors yet, but if we did, we could filter by distance here.
-    // For now, just return true for distance.
     const matchesDistance = true;
 
-    return matchesSearch && matchesBloodGroup && matchesDistance && matchesUserRequest;
+    return matchesSearch && matchesBloodGroup && matchesDistance && matchesUserRequest && isEligible;
   });
 
   const getUrgencyColor = (urgency: string) => {
@@ -308,6 +310,7 @@ export default function Home() {
 
   const [fulfillModalOpen, setFulfillModalOpen] = useState<string | null>(null);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
+  const [isDonating, setIsDonating] = useState(false);
   const [donateConfirmModal, setDonateConfirmModal] = useState<BloodRequest | null>(null);
   const [fulfilledBy, setFulfilledBy] = useState('');
 
@@ -325,7 +328,8 @@ export default function Home() {
   };
 
   const handleDonateConfirm = async () => {
-    if (!donateConfirmModal || !userProfile) return;
+    if (!donateConfirmModal || !userProfile || isDonating) return;
+    setIsDonating(true);
     try {
       // 1. Create a notification for the requester
       await addDoc(collection(db, 'notifications'), {
@@ -360,7 +364,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
       }
 
       setDonateConfirmModal(null);
-      alert('Interest confirmed! The recipient has been notified and a chat message has been sent.');
+      toast.success('Interest confirmed! The recipient has been notified and a chat message has been sent.');
       
       // Refresh requests locally
       setRequests(requests.map(req => 
@@ -368,7 +372,9 @@ Total Donations: ${userProfile.totalDonations || 0}`;
       ));
     } catch (error) {
       console.error('Error confirming donation:', error);
-      alert('Failed to confirm donation interest. Please try again.');
+      toast.error('Failed to confirm donation interest. Please try again.');
+    } finally {
+      setIsDonating(false);
     }
   };
 
@@ -446,64 +452,37 @@ Total Donations: ${userProfile.totalDonations || 0}`;
         }
       }
 
+      if (!donorUid) {
+        toast.error('Please select a valid donor from the list or search results.');
+        return;
+      }
+
       await updateDoc(requestRef, {
-        status: 'fulfilled',
+        status: 'pending_fulfillment',
         fulfilledBy: fulfilledBy || 'Unknown Donor',
+        fulfilledByUid: donorUid,
         updatedAt: serverTimestamp()
       });
 
-      // If we identified a donor, update their last donation date and create a donation record
-      if (donorUid) {
-        const userRef = doc(db, 'users', donorUid);
-        const donorRef = doc(db, 'donors', donorUid);
-        
-        const today = new Date();
-        const todayIso = today.toISOString();
-        
-        await updateDoc(userRef, {
-          lastDonationDate: todayIso,
-          totalDonations: increment(1),
-          donorScore: increment(10),
-          updatedAt: serverTimestamp()
-        });
-
-        // Also update the public donor profile if it exists
-        const donorDoc = donors.find(d => d.uid === donorUid);
-        if (donorDoc && donorDoc.id) {
-          await updateDoc(doc(db, 'donors', donorDoc.id), {
-            lastDonationDate: todayIso,
-            totalDonations: increment(1),
-            donorScore: increment(10),
-            updatedAt: serverTimestamp()
-          });
-        }
-
-        // Create donation record
-        const request = requests.find(r => r.id === fulfillModalOpen);
-        if (request) {
-          const currentDonations = donorDoc ? (donorDoc.totalDonations || 0) + 1 : 1;
-          await addDoc(collection(db, 'donation_history'), {
-            donorUid: donorUid,
-            recipientUid: userProfile.uid,
-            recipientName: userProfile.displayName,
-            requestId: fulfillModalOpen,
-            date: serverTimestamp(),
-            bloodGroup: request.bloodGroup,
-            location: request.location,
-            hospitalName: request.hospitalName || '',
-            donorDonationCount: currentDonations,
-            donorGender: donorDoc?.gender || '',
-            createdAt: serverTimestamp()
-          });
-        }
-      }
+      // Send notification to the donor for verification
+      await addDoc(collection(db, 'notifications'), {
+        userId: donorUid,
+        title: 'Donation Verification Required',
+        message: `${userProfile.displayName} marked their request as fulfilled by you. Please verify this donation in your profile.`,
+        type: 'fulfillment_verification',
+        requestId: fulfillModalOpen,
+        fromUid: userProfile.uid,
+        read: false,
+        createdAt: serverTimestamp()
+      });
       
       // Update local state
       setRequests(requests.map(req => 
-        req.id === fulfillModalOpen ? { ...req, status: 'fulfilled', fulfilledBy: fulfilledBy || 'Unknown Donor' } : req
+        req.id === fulfillModalOpen ? { ...req, status: 'pending_fulfillment', fulfilledBy: fulfilledBy || 'Unknown Donor', fulfilledByUid: donorUid } : req
       ));
       setFulfillModalOpen(null);
       setFulfilledBy('');
+      toast.success('Verification request sent to the donor!');
     } catch (error) {
       if (error instanceof Error && error.message.includes('Firestore Error')) throw error;
       handleFirestoreError(error, OperationType.UPDATE, `bloodRequests/${fulfillModalOpen}`);
@@ -1186,9 +1165,12 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                 </button>
                 <button
                   onClick={handleDonateConfirm}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors shadow-sm"
+                  disabled={isDonating}
+                  className={`flex-1 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors shadow-sm flex items-center justify-center ${isDonating ? 'opacity-70 cursor-not-allowed' : ''}`}
                 >
-                  Yes
+                  {isDonating ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : 'Yes'}
                 </button>
               </div>
             </div>

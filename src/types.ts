@@ -101,7 +101,7 @@ export interface BloodRequest {
     lat: number;
     lng: number;
   };
-  status: 'pending' | 'fulfilled' | 'open';
+  status: 'pending' | 'fulfilled' | 'open' | 'pending_fulfillment';
   fulfilledBy?: string;
   fulfilledByUid?: string;
   pendingDonors?: string[];
