@@ -24,7 +24,7 @@ const FAQS = [
     answer: "The actual donation takes about 8-10 minutes. However, the entire process including registration and brief medical checkup takes about 45-60 minutes."
   },
   {
-    question: "What happens after I click 'Donate Now'?",
+    question: "What happens after I click 'Donate'?",
     answer: "The recipient will receive a notification and an automated message in their inbox. They can then contact you to coordinate the donation."
   }
 ];

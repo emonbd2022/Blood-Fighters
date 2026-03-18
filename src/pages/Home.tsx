@@ -8,10 +8,11 @@ import { format } from 'date-fns';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { collection, query, getDocs, orderBy, doc, updateDoc, serverTimestamp, where, addDoc, arrayUnion, increment } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, doc, updateDoc, serverTimestamp, where, addDoc, arrayUnion, increment, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useNavigate, useLocation } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import EligibilityForm from '../components/EligibilityForm';
 import EligibilitySummary from '../components/EligibilitySummary';
 import FAQAndTerms from '../components/FAQAndTerms';
@@ -306,8 +307,22 @@ export default function Home() {
   };
 
   const [fulfillModalOpen, setFulfillModalOpen] = useState<string | null>(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
   const [donateConfirmModal, setDonateConfirmModal] = useState<BloodRequest | null>(null);
   const [fulfilledBy, setFulfilledBy] = useState('');
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmModal || !userProfile) return;
+    try {
+      await deleteDoc(doc(db, 'bloodRequests', deleteConfirmModal));
+      setRequests(prev => prev.filter(req => req.id !== deleteConfirmModal));
+      toast.success('Request deleted successfully');
+      setDeleteConfirmModal(null);
+    } catch (error) {
+      console.error('Error deleting request:', error);
+      toast.error('Failed to delete request');
+    }
+  };
 
   const handleDonateConfirm = async () => {
     if (!donateConfirmModal || !userProfile) return;
@@ -477,6 +492,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
             location: request.location,
             hospitalName: request.hospitalName || '',
             donorDonationCount: currentDonations,
+            donorGender: donorDoc?.gender || '',
             createdAt: serverTimestamp()
           });
         }
@@ -638,7 +654,13 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                         <p className="text-sm font-medium text-slate-900">{req.requesterName || 'Unknown'}</p>
                         <p className="text-xs text-slate-500 flex items-center">
                           <Clock className="w-3 h-3 mr-1" />
-                          {req.createdAt ? format(new Date(req.createdAt), 'MMM d, yyyy h:mm a') : 'Just now'}
+                          {req.createdAt ? (() => {
+                            try {
+                              return format(new Date(req.createdAt), 'MMM d, yyyy h:mm a');
+                            } catch (e) {
+                              return 'Recently';
+                            }
+                          })() : 'Just now'}
                         </p>
                       </div>
                     </div>
@@ -689,13 +711,21 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                       <Calendar className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
                       <span>
                         {req.time ? `${(() => {
+                          if (!req.time.includes(':')) return req.time;
                           const [hours, minutes] = req.time.split(':');
                           const h = parseInt(hours, 10);
+                          if (isNaN(h)) return req.time;
                           const ampm = h >= 12 ? 'PM' : 'AM';
                           const h12 = h % 12 || 12;
                           return `${h12}:${minutes} ${ampm}`;
                         })()} on ` : ''}
-                        {req.date ? format(new Date(req.date), 'dd MMMM, yyyy') : 'Unknown Date'}
+                        {req.date ? (() => {
+                          try {
+                            return format(new Date(req.date), 'dd MMMM, yyyy');
+                          } catch (e) {
+                            return 'Unknown Date';
+                          }
+                        })() : 'Unknown Date'}
                       </span>
                     </div>
                     
@@ -774,6 +804,12 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                           >
                             Edit
                           </button>
+                          <button
+                            onClick={() => setDeleteConfirmModal(req.id!)}
+                            className="text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors border border-red-200"
+                          >
+                            Delete
+                          </button>
                         </div>
                       )}
                       
@@ -812,7 +848,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                                   }}
                                   className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-xl transition-all shadow-md active:scale-95 flex items-center whitespace-nowrap"
                                 >
-                                  Donate Now
+                                  Donate
                                 </button>
                             </>
                           )}
@@ -953,9 +989,9 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                   </div>
                   
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
-                    <div className="flex items-center">
-                      <MapPin className="w-4 h-4 mr-2 text-slate-400" />
-                      <span className="truncate" title={donor.location}>{donor.location}</span>
+                    <div className="flex items-start">
+                      <MapPin className="w-4 h-4 mr-2 text-slate-400 mt-0.5 flex-shrink-0" />
+                      <span title={donor.location}>{donor.location}</span>
                     </div>
                     {donor.phone && (
                       <div className="flex items-center">
@@ -1002,7 +1038,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                             return;
                           }
                           setChatRecipient({
-                            id: donor.uid,
+                            id: donor.uid || donor.id,
                             name: donor.displayName,
                             photo: donor.photoURL
                           });
@@ -1063,7 +1099,13 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                   <p className="text-slate-700 text-sm sm:text-base">
                     <span className="font-bold text-red-600">
                       {recentDonations[currentNewsIndex].donorUid ? donors.find(d => d.uid === recentDonations[currentNewsIndex].donorUid)?.displayName || 'A donor' : 'A donor'}
-                    </span> donated <span className="font-bold">{recentDonations[currentNewsIndex].bloodGroup}</span> blood to <span className="font-bold">{recentDonations[currentNewsIndex].recipientName}</span> on {format(recentDonations[currentNewsIndex].date, 'dd MMMM, yyyy')} in {recentDonations[currentNewsIndex].hospitalName || recentDonations[currentNewsIndex].location}. This was their <span className="font-bold">{recentDonations[currentNewsIndex].donorDonationCount || 1}{
+                    </span> donated <span className="font-bold">{recentDonations[currentNewsIndex].bloodGroup}</span> blood to <span className="font-bold">{recentDonations[currentNewsIndex].recipientName}</span> on {(() => {
+                      try {
+                        return format(recentDonations[currentNewsIndex].date, 'dd MMMM, yyyy');
+                      } catch (e) {
+                        return 'Unknown Date';
+                      }
+                    })()} in {recentDonations[currentNewsIndex].hospitalName || recentDonations[currentNewsIndex].location}. This was {recentDonations[currentNewsIndex].donorGender === 'female' ? 'her' : recentDonations[currentNewsIndex].donorGender === 'male' ? 'his' : 'their'} <span className="font-bold">{recentDonations[currentNewsIndex].donorDonationCount || 1}{
                       (() => {
                         const n = recentDonations[currentNewsIndex].donorDonationCount || 1;
                         const s = ["th", "st", "nd", "rd"];
@@ -1093,6 +1135,39 @@ Total Donations: ${userProfile.totalDonations || 0}`;
 
       <FAQAndTerms />
 
+      {/* Delete Confirm Modal */}
+      {deleteConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+          >
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Request</h3>
+              <p className="text-slate-600 mb-6">
+                Are you sure you want to delete this blood request? This action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setDeleteConfirmModal(null)}
+                  className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  className="px-4 py-2 bg-red-600 text-white font-medium hover:bg-red-700 rounded-xl transition-colors shadow-sm"
+                >
+                  Delete Request
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Donate Confirm Modal */}
       {donateConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -1116,13 +1191,13 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                   onClick={() => setDonateConfirmModal(null)}
                   className="flex-1 px-4 py-2.5 border border-slate-200 text-sm font-medium rounded-xl text-slate-700 hover:bg-slate-50 transition-colors"
                 >
-                  Cancel
+                  No
                 </button>
                 <button
                   onClick={handleDonateConfirm}
                   className="flex-1 px-4 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors shadow-sm"
                 >
-                  Confirm & Notify
+                  Yes
                 </button>
               </div>
             </div>

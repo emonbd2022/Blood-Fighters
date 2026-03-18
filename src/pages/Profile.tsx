@@ -5,10 +5,11 @@ import { motion } from 'framer-motion';
 import { User, MapPin, Phone, Droplet, CheckCircle, Calendar, Clock, CheckCircle2, FileText, Navigation, MessageCircle, Mail, ShieldCheck, Award } from 'lucide-react';
 import { format } from 'date-fns';
 import EligibilityForm from '../components/EligibilityForm';
-import { doc, updateDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp, addDoc, increment } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp, addDoc, increment, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { DonationRecord } from '../types';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
@@ -23,6 +24,7 @@ export default function Profile() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [showEligibilityForm, setShowEligibilityForm] = useState(!userProfile?.isProfileComplete);
   const [fulfillModalOpen, setFulfillModalOpen] = useState<string | null>(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
   const [fulfilledBy, setFulfilledBy] = useState('');
   const [donors, setDonors] = useState<any[]>([]);
   const [donorSearchResults, setDonorSearchResults] = useState<any[]>([]);
@@ -205,6 +207,7 @@ export default function Profile() {
         bloodGroup: eligibilityData.bloodGroup,
         location: eligibilityData.location,
         phone: eligibilityData.phone,
+        gender: eligibilityData.gender || '',
         lastDonationDate: eligibilityData.lastDonation || '',
         donorId: userProfile.donorId,
         eligibilityData: eligibilityData,
@@ -221,6 +224,7 @@ export default function Profile() {
         bloodGroup: eligibilityData.bloodGroup,
         location: eligibilityData.location,
         phone: eligibilityData.phone,
+        gender: eligibilityData.gender || '',
         lastDonationDate: eligibilityData.lastDonation || '',
         isAvailable: isAvailable,
         totalDonations: userProfile.totalDonations || 0,
@@ -253,6 +257,19 @@ export default function Profile() {
 
   const handleFulfill = (requestId: string) => {
     setFulfillModalOpen(requestId);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmModal || !userProfile) return;
+    try {
+      await deleteDoc(doc(db, 'bloodRequests', deleteConfirmModal));
+      setMyRequests(prev => prev.filter(req => req.id !== deleteConfirmModal));
+      toast.success('Request deleted successfully');
+      setDeleteConfirmModal(null);
+    } catch (error) {
+      console.error('Error deleting request:', error);
+      toast.error('Failed to delete request');
+    }
   };
 
   const searchDonors = async (term: string) => {
@@ -353,6 +370,7 @@ export default function Profile() {
             location: request.location,
             hospitalName: request.hospitalName || '',
             donorDonationCount: currentDonations,
+            donorGender: donorDoc?.gender || '',
             createdAt: serverTimestamp()
           });
         }
@@ -449,6 +467,19 @@ export default function Profile() {
                 <Award className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
                 <span className="text-xs font-bold text-slate-700">{userProfile.donorScore || 0} Score</span>
               </div>
+              {userProfile.isProfileComplete && (
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
+                  checkEligibility(userProfile.lastDonationDate) 
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200' 
+                    : 'bg-red-100 text-red-800 border-red-200'
+                }`}>
+                  {checkEligibility(userProfile.lastDonationDate) ? (
+                    <>Available</>
+                  ) : (
+                    <>In Cool-down</>
+                  )}
+                </span>
+              )}
               {userProfile.isProfileComplete ? (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
                   <CheckCircle className="w-3 h-3 mr-1" /> Complete
@@ -708,7 +739,13 @@ export default function Profile() {
                   <div>
                     <p className="text-sm font-bold text-slate-900">Donated to {record.recipientName}</p>
                     <p className="text-xs text-slate-500 mt-1 flex items-center">
-                      <Calendar className="w-3 h-3 mr-1" /> {format(record.date, 'MMM d, yyyy')}
+                      <Calendar className="w-3 h-3 mr-1" /> {(() => {
+                        try {
+                          return format(record.date, 'MMM d, yyyy');
+                        } catch (e) {
+                          return 'Unknown Date';
+                        }
+                      })()}
                     </p>
                     <p className="text-xs text-slate-500 mt-1 flex items-center">
                       <MapPin className="w-3 h-3 mr-1" /> {record.location}
@@ -761,13 +798,21 @@ export default function Profile() {
                           <div className="flex items-center">
                             <Calendar className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                             {req.time ? `${(() => {
+                              if (!req.time.includes(':')) return req.time;
                               const [hours, minutes] = req.time.split(':');
                               const h = parseInt(hours, 10);
+                              if (isNaN(h)) return req.time;
                               const ampm = h >= 12 ? 'PM' : 'AM';
                               const h12 = h % 12 || 12;
                               return `${h12}:${minutes} ${ampm}`;
                             })()} on ` : ''}
-                            {req.date ? format(new Date(req.date), 'dd MMMM, yyyy') : 'Unknown Date'}
+                            {req.date ? (() => {
+                              try {
+                                return format(new Date(req.date), 'dd MMMM, yyyy');
+                              } catch (e) {
+                                return 'Unknown Date';
+                              }
+                            })() : 'Unknown Date'}
                           </div>
                           <div className="flex items-center">
                             <MapPin className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
@@ -775,7 +820,13 @@ export default function Profile() {
                           </div>
                           <div className="flex items-center">
                             <Clock className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-                            {req.createdAt ? format(new Date(req.createdAt), 'MMM d, yyyy') : 'Recently'}
+                            {req.createdAt ? (() => {
+                              try {
+                                return format(new Date(req.createdAt), 'MMM d, yyyy');
+                              } catch (e) {
+                                return 'Recently';
+                              }
+                            })() : 'Recently'}
                           </div>
                         </div>
                       </div>
@@ -794,6 +845,12 @@ export default function Profile() {
                           >
                             Edit Request
                           </button>
+                          <button
+                            onClick={() => setDeleteConfirmModal(req.id!)}
+                            className="text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors border border-red-200"
+                          >
+                            Delete Request
+                          </button>
                         </div>
                       )}
                     </div>
@@ -804,6 +861,39 @@ export default function Profile() {
           )}
         </div>
       </motion.div>
+
+      {/* Delete Confirm Modal */}
+      {deleteConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+          >
+            <div className="p-6">
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Delete Request</h3>
+              <p className="text-slate-600 mb-6">
+                Are you sure you want to delete this blood request? This action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setDeleteConfirmModal(null)}
+                  className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  className="px-4 py-2 bg-red-600 text-white font-medium hover:bg-red-700 rounded-xl transition-colors shadow-sm"
+                >
+                  Delete Request
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Fulfill Modal */}
       {fulfillModalOpen && (
