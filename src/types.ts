@@ -52,6 +52,8 @@ export interface DonationRecord {
   date: Date;
   bloodGroup: string;
   location: string;
+  hospitalName?: string;
+  donorDonationCount?: number;
   createdAt: Date;
 }
 
@@ -86,6 +88,7 @@ export interface BloodRequest {
   bloodGroup: string;
   amount: string;
   date: string;
+  time?: string;
   location: string;
   contact: string;
   whatsapp?: string;

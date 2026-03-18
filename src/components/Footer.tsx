@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Droplet, Heart, Facebook, Mail, Phone, Info, ShieldCheck, HelpCircle, Users, Award, ExternalLink, Github } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default function Footer() {
@@ -12,25 +12,24 @@ export default function Footer() {
   });
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        // In a real app with many documents, you'd use a counter or a cloud function
-        // For this app, we'll do a simple count for now
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const donationsSnap = await getDocs(collection(db, 'donation_history'));
-        const donorsSnap = await getDocs(collection(db, 'donors'));
-        
-        setStats({
-          totalUsers: usersSnap.size,
-          totalDonations: donationsSnap.size,
-          totalDonors: donorsSnap.size
-        });
-      } catch (error) {
-        console.error("Error fetching footer stats:", error);
-      }
-    };
+    // Real-time listeners for stats
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setStats(prev => ({ ...prev, totalUsers: snap.size }));
+    });
 
-    fetchStats();
+    const unsubDonations = onSnapshot(collection(db, 'donation_history'), (snap) => {
+      setStats(prev => ({ ...prev, totalDonations: snap.size }));
+    });
+
+    const unsubDonors = onSnapshot(collection(db, 'donors'), (snap) => {
+      setStats(prev => ({ ...prev, totalDonors: snap.size }));
+    });
+
+    return () => {
+      unsubUsers();
+      unsubDonations();
+      unsubDonors();
+    };
   }, []);
 
   return (

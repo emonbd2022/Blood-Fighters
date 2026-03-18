@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { X, Send, User, MapPin } from 'lucide-react';
+import { X, Send, User, MapPin, Phone, MessageCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 
@@ -18,7 +18,24 @@ export default function ChatBox({ recipientId, recipientName, recipientPhoto, on
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatId, setChatId] = useState<string | null>(null);
+  const [recipientDetails, setRecipientDetails] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchRecipientDetails = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', recipientId));
+        if (userDoc.exists()) {
+          setRecipientDetails(userDoc.data());
+        }
+      } catch (error) {
+        console.error("Error fetching recipient details:", error);
+      }
+    };
+    if (recipientId) {
+      fetchRecipientDetails();
+    }
+  }, [recipientId]);
 
   useEffect(() => {
     if (!userProfile) return;
@@ -160,19 +177,31 @@ export default function ChatBox({ recipientId, recipientName, recipientPhoto, on
     <div className="fixed bottom-4 right-4 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col z-50 overflow-hidden" style={{ height: '500px', maxHeight: '80vh' }}>
       {/* Header */}
       <div className="bg-slate-900 px-4 py-3 flex items-center justify-between text-white">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 overflow-hidden">
           {recipientPhoto ? (
-            <img src={recipientPhoto} alt={recipientName} className="w-8 h-8 rounded-full object-cover border border-slate-700" referrerPolicy="no-referrer" />
+            <img src={recipientPhoto} alt={recipientName} className="w-8 h-8 rounded-full object-cover border border-slate-700 shrink-0" referrerPolicy="no-referrer" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
               <User className="w-4 h-4 text-slate-300" />
             </div>
           )}
           <span className="font-medium truncate">{recipientName}</span>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded-lg transition-colors">
-          <X className="w-5 h-5 text-slate-300" />
-        </button>
+        <div className="flex items-center space-x-1 shrink-0">
+          {recipientDetails?.phone && (
+            <a href={`tel:${recipientDetails.phone}`} className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors" title="Call">
+              <Phone className="w-4 h-4 text-green-400" />
+            </a>
+          )}
+          {recipientDetails?.whatsapp && (
+            <a href={`https://wa.me/${recipientDetails.whatsapp}`} target="_blank" rel="noopener noreferrer" className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors" title="WhatsApp">
+              <MessageCircle className="w-4 h-4 text-green-500" />
+            </a>
+          )}
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors ml-1">
+            <X className="w-5 h-5 text-slate-300" />
+          </button>
+        </div>
       </div>
 
       {/* Messages */}

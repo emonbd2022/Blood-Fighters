@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useChat } from '../contexts/ChatContext';
 import { BloodRequest } from '../types';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Calendar, Phone, Droplet, Clock, CheckCircle2, Search, Share2, Check, Map as MapIcon, List, AlertTriangle, Navigation, MessageCircle, Mail, ChevronLeft, ChevronRight, User, AlertCircle, ShieldCheck, Award } from 'lucide-react';
 import { format } from 'date-fns';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
@@ -13,6 +13,7 @@ import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useNavigate, useLocation } from 'react-router-dom';
 import EligibilityForm from '../components/EligibilityForm';
+import EligibilitySummary from '../components/EligibilitySummary';
 import FAQAndTerms from '../components/FAQAndTerms';
 import { Hospital } from 'lucide-react';
 
@@ -54,6 +55,10 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'fulfilled'>('all');
   const [activeTab, setActiveTab] = useState<'requests' | 'donors'>('requests');
   const [highlightedRequestId, setHighlightedRequestId] = useState<string | null>(null);
+  const [showEligibilitySummary, setShowEligibilitySummary] = useState<BloodRequest | null>(null);
+  const [donorSearchResults, setDonorSearchResults] = useState<any[]>([]);
+  const [isSearchingDonors, setIsSearchingDonors] = useState(false);
+  const [recentDonations, setRecentDonations] = useState<any[]>([]);
   const { setChatRecipient, sendMessage } = useChat();
 
   useEffect(() => {
@@ -149,6 +154,19 @@ export default function Home() {
           };
         });
         setDonors(mappedDonors);
+
+        const qDonations = query(collection(db, 'donation_history'), orderBy('createdAt', 'desc'));
+        const querySnapshotDonations = await getDocs(qDonations);
+        const mappedDonations = querySnapshotDonations.docs.map(doc => {
+          const data = doc.data();
+          return {
+            ...data,
+            id: doc.id,
+            date: data.date?.toDate() || new Date(),
+            createdAt: data.createdAt?.toDate() || new Date()
+          };
+        });
+        setRecentDonations(mappedDonations);
 
         // Fetch chats to suggest donor IDs
         if (userProfile) {
@@ -294,27 +312,96 @@ export default function Home() {
   const handleDonateConfirm = async () => {
     if (!donateConfirmModal || !userProfile) return;
     try {
-      const requestRef = doc(db, 'bloodRequests', donateConfirmModal.id!);
-      await updateDoc(requestRef, {
-        pendingDonors: arrayUnion(userProfile.uid),
-        updatedAt: serverTimestamp()
+      // 1. Create a notification for the requester
+      await addDoc(collection(db, 'notifications'), {
+        userId: donateConfirmModal.requesterUid,
+        title: 'New Donation Interest',
+        message: `${userProfile.displayName} (${userProfile.bloodGroup}) is interested in donating for your request.`,
+        type: 'donation_interest',
+        requestId: donateConfirmModal.id,
+        fromUid: userProfile.uid,
+        read: false,
+        createdAt: serverTimestamp()
       });
 
-      // Auto-send message
-      await sendMessage(donateConfirmModal.requesterUid, "I can donate blood for your request.");
+      // 2. Send an automated chat message with donor details
+      const donorDetails = `I am interested in donating blood for your request: ${donateConfirmModal.patientIssue} at ${donateConfirmModal.hospitalName}.
 
-      // In a real app, we would trigger a Cloud Function here to send a push notification
-      // For now, we'll just show a success message
-      alert('Confirmation sent! The recipient has been notified and a message has been sent to their inbox.');
-      
+My Details:
+Name: ${userProfile.displayName}
+Blood Group: ${userProfile.bloodGroup}
+Phone: ${userProfile.phone || 'N/A'}
+Location: ${userProfile.location || 'N/A'}
+Total Donations: ${userProfile.totalDonations || 0}`;
+
+      await sendMessage(donateConfirmModal.requesterUid, donorDetails);
+
+      // 3. Update the blood request document with pendingDonors
+      if (donateConfirmModal.id) {
+        const requestRef = doc(db, 'bloodRequests', donateConfirmModal.id);
+        await updateDoc(requestRef, {
+          pendingDonors: arrayUnion(userProfile.uid)
+        });
+      }
+
       setDonateConfirmModal(null);
+      alert('Interest confirmed! The recipient has been notified and a chat message has been sent.');
+      
       // Refresh requests locally
       setRequests(requests.map(req => 
         req.id === donateConfirmModal.id ? { ...req, pendingDonors: [...(req.pendingDonors || []), userProfile.uid] } : req
       ));
     } catch (error) {
       console.error('Error confirming donation:', error);
-      alert('Failed to send confirmation. Please try again.');
+      alert('Failed to confirm donation interest. Please try again.');
+    }
+  };
+
+  const [currentNewsIndex, setCurrentNewsIndex] = useState(0);
+
+  useEffect(() => {
+    if (recentDonations.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentNewsIndex(prev => (prev + 1) % recentDonations.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [recentDonations.length]);
+
+  const searchDonors = async (term: string) => {
+    if (!term || term.length < 2) {
+      setDonorSearchResults([]);
+      return;
+    }
+    setIsSearchingDonors(true);
+    try {
+      // Search by donorId or displayName
+      // Note: Firestore doesn't support case-insensitive search easily without extra fields
+      // We'll do a simple prefix search for now
+      const q = query(
+        collection(db, 'donors'),
+        where('displayName', '>=', term),
+        where('displayName', '<=', term + '\uf8ff')
+      );
+      
+      const qId = query(
+        collection(db, 'donors'),
+        where('donorId', '>=', term.toUpperCase()),
+        where('donorId', '<=', term.toUpperCase() + '\uf8ff')
+      );
+      
+      const [snapName, snapId] = await Promise.all([getDocs(q), getDocs(qId)]);
+      const results = [...snapName.docs, ...snapId.docs].map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Remove duplicates
+      const uniqueResults = results.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+      setDonorSearchResults(uniqueResults);
+    } catch (error) {
+      console.error('Error searching donors:', error);
+    } finally {
+      setIsSearchingDonors(false);
     }
   };
 
@@ -334,7 +421,11 @@ export default function Home() {
       // Find the donor profile if we have a donorId
       let donorUid = '';
       if (fulfilledBy) {
-        const donorMatch = donors.find(d => d.donorId === fulfilledBy || d.displayName === fulfilledBy);
+        // Try to find by donorId first, then by displayName
+        const donorMatch = donors.find(d => 
+          (d.donorId && d.donorId === fulfilledBy) || 
+          (d.displayName && d.displayName === fulfilledBy)
+        );
         if (donorMatch) {
           donorUid = donorMatch.uid;
         }
@@ -375,6 +466,7 @@ export default function Home() {
         // Create donation record
         const request = requests.find(r => r.id === fulfillModalOpen);
         if (request) {
+          const currentDonations = donorDoc ? (donorDoc.totalDonations || 0) + 1 : 1;
           await addDoc(collection(db, 'donation_history'), {
             donorUid: donorUid,
             recipientUid: userProfile.uid,
@@ -383,6 +475,8 @@ export default function Home() {
             date: serverTimestamp(),
             bloodGroup: request.bloodGroup,
             location: request.location,
+            hospitalName: request.hospitalName || '',
+            donorDonationCount: currentDonations,
             createdAt: serverTimestamp()
           });
         }
@@ -398,6 +492,34 @@ export default function Home() {
       if (error instanceof Error && error.message.includes('Firestore Error')) throw error;
       handleFirestoreError(error, OperationType.UPDATE, `bloodRequests/${fulfillModalOpen}`);
     }
+  };
+
+  const getSuggestedDonors = () => {
+    if (!fulfillModalOpen || !userProfile) return [];
+    const request = requests.find(r => r.id === fulfillModalOpen);
+    if (!request) return [];
+
+    const pendingUids = request.pendingDonors || [];
+    const chattedUids = chats.map(chat => chat.participants.find((p: string) => p !== userProfile.uid)).filter(Boolean);
+    const sameGroupUids = donors.filter(d => d.bloodGroup === request.bloodGroup).map(d => d.uid);
+
+    // Combine all unique UIDs
+    const allUids = Array.from(new Set([...pendingUids, ...chattedUids, ...sameGroupUids]));
+
+    // Map to donor objects and sort
+    const suggested = allUids.map(uid => {
+      const donor = donors.find(d => d.uid === uid);
+      if (!donor) return null;
+      
+      let score = 0;
+      if (pendingUids.includes(uid)) score += 100;
+      if (chattedUids.includes(uid)) score += 50;
+      if (sameGroupUids.includes(uid)) score += 10;
+
+      return { ...donor, suggestionScore: score };
+    }).filter(Boolean).sort((a: any, b: any) => (b.suggestionScore || 0) - (a.suggestionScore || 0));
+
+    return suggested.slice(0, 10); // Top 10 suggestions
   };
 
   return (
@@ -489,13 +611,13 @@ export default function Home() {
                   id={`request-${req.id}`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ 
-                    opacity: 1, 
+                    opacity: isFulfilled ? 0.6 : 1, 
                     y: 0,
                     scale: highlightedRequestId === req.id ? 1.02 : 1,
                     borderColor: highlightedRequestId === req.id ? '#ef4444' : (isFulfilled ? '#d1fae5' : '#f1f5f9')
                   }}
                   transition={{ delay: index * 0.05 }}
-                  className={`bg-white rounded-2xl p-6 shadow-sm border ${isFulfilled ? 'border-emerald-100 bg-emerald-50/30' : 'border-slate-100'} relative overflow-hidden ${highlightedRequestId === req.id ? 'ring-2 ring-red-500 ring-offset-2' : ''}`}
+                  className={`bg-white rounded-2xl p-4 sm:p-6 shadow-sm border ${isFulfilled ? 'border-emerald-100 bg-emerald-50/30 grayscale-[20%]' : 'border-slate-100'} relative overflow-hidden ${highlightedRequestId === req.id ? 'ring-2 ring-red-500 ring-offset-2' : ''}`}
                 >
                   {isFulfilled && (
                     <div className="absolute top-0 right-0 bg-emerald-500 text-white px-3 py-1 rounded-bl-xl text-xs font-bold uppercase tracking-wider flex items-center">
@@ -547,21 +669,34 @@ export default function Home() {
                     )}
 
                     {req.hospitalName && (
-                      <div className="flex items-center text-slate-600 text-sm">
-                        <Hospital className="w-4 h-4 mr-2 text-slate-400" />
-                        <span className="font-medium">{req.hospitalName}</span>
+                      <div className="flex items-start text-slate-600 text-sm mt-3">
+                        <Hospital className="w-4 h-4 mr-2 mt-0.5 text-slate-400 shrink-0" />
+                        <div>
+                          <span className="font-medium block">{req.hospitalName}</span>
+                          <span className="text-slate-500 text-xs mt-0.5 block">{req.location}</span>
+                        </div>
                       </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div className="flex items-center text-slate-600">
-                        <Calendar className="w-4 h-4 mr-2 text-slate-400" />
-                        <span className="truncate" title={req.date}>{req.date}</span>
+                    {!req.hospitalName && (
+                      <div className="flex items-start text-slate-600 text-sm mt-3">
+                        <MapPin className="w-4 h-4 mr-2 mt-0.5 text-slate-400 shrink-0" />
+                        <span className="text-slate-500">{req.location}</span>
                       </div>
-                      <div className="flex items-center text-slate-600">
-                        <MapPin className="w-4 h-4 mr-2 text-slate-400" />
-                        <span className="truncate" title={req.location}>{req.location}</span>
-                      </div>
+                    )}
+
+                    <div className="flex items-center text-slate-600 text-sm mt-3">
+                      <Calendar className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
+                      <span>
+                        {req.time ? `${(() => {
+                          const [hours, minutes] = req.time.split(':');
+                          const h = parseInt(hours, 10);
+                          const ampm = h >= 12 ? 'PM' : 'AM';
+                          const h12 = h % 12 || 12;
+                          return `${h12}:${minutes} ${ampm}`;
+                        })()} on ` : ''}
+                        {req.date ? format(new Date(req.date), 'dd MMMM, yyyy') : 'Unknown Date'}
+                      </span>
                     </div>
                     
                     {isFulfilled && req.fulfilledBy && (
@@ -581,39 +716,49 @@ export default function Home() {
                     )}
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
-                    <div className="flex items-center text-slate-700 font-medium text-sm">
-                      <Phone className="w-4 h-4 mr-2 text-slate-400" />
-                      <a href={`tel:${req.contact}`} className="hover:text-red-600">{req.contact}</a>
-                      {req.whatsapp && (
-                        <a href={`https://wa.me/${req.whatsapp}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-green-500 hover:text-green-600" title="WhatsApp">
-                          <MessageCircle className="w-4 h-4" />
-                        </a>
-                      )}
-                      {req.messengerId && (
-                        <a href={`https://m.me/${req.messengerId}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-blue-500 hover:text-blue-600" title="Messenger">
-                          <MessageCircle className="w-4 h-4" />
-                        </a>
-                      )}
-                    </div>
+                  <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    {!isFulfilled && (
+                      <div className="flex flex-wrap items-center text-slate-700 font-medium text-sm gap-2">
+                        <div className="flex items-center">
+                          <Phone className="w-4 h-4 mr-2 text-slate-400" />
+                          <a href={`tel:${req.contact}`} className="hover:text-red-600">{req.contact}</a>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          {req.whatsapp && (
+                            <a href={`https://wa.me/${req.whatsapp}`} target="_blank" rel="noopener noreferrer" className="text-green-500 hover:text-green-600 p-1 hover:bg-green-50 rounded-lg transition-colors" title="WhatsApp">
+                              <MessageCircle className="w-4 h-4" />
+                            </a>
+                          )}
+                          {req.messengerId && (
+                            <a href={`https://m.me/${req.messengerId}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-600 p-1 hover:bg-blue-50 rounded-lg transition-colors" title="Messenger">
+                              <MessageCircle className="w-4 h-4" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleShare(req)}
-                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                        title="Share request"
-                      >
-                        {copiedId === req.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
-                      </button>
+                    <div className="flex flex-wrap items-center gap-2 ml-auto">
+                      {!isFulfilled && (
+                        <>
+                          <button
+                            onClick={() => handleShare(req)}
+                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            title="Share request"
+                          >
+                            {copiedId === req.id ? <Check className="w-4 h-4 text-emerald-500" /> : <Share2 className="w-4 h-4" />}
+                          </button>
 
-                      <a
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${req.coordinates ? `${req.coordinates.lat},${req.coordinates.lng}` : encodeURIComponent((req.hospitalName ? req.hospitalName + ' ' : '') + req.location)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center"
-                      >
-                        <Navigation className="w-3.5 h-3.5 mr-1" /> Go there
-                      </a>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${req.coordinates ? `${req.coordinates.lat},${req.coordinates.lng}` : encodeURIComponent((req.hospitalName ? req.hospitalName + ' ' : '') + req.location)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center"
+                          >
+                            <Navigation className="w-3.5 h-3.5 mr-1" /> Go there
+                          </a>
+                        </>
+                      )}
 
                       {!isFulfilled && isOwner && (
                         <div className="flex space-x-2">
@@ -656,25 +801,19 @@ export default function Home() {
                               >
                                 <MessageCircle className="w-3.5 h-3.5 mr-1" /> Chat
                               </button>
-                              <button
-                                onClick={() => {
-                                  if (!userProfile?.isProfileComplete) {
-                                    alert('Please complete your profile and eligibility form first.');
-                                    navigate('/profile');
-                                    return;
-                                  }
-                                  // Check eligibility based on last donation date
-                                  const isEligible = checkEligibility(userProfile.lastDonationDate);
-                                  if (!isEligible) {
-                                    alert('You are currently in the 3-month cool-down period.');
-                                    return;
-                                  }
-                                  setDonateConfirmModal(req);
-                                }}
-                                className="text-xs font-medium text-white bg-red-600 hover:bg-red-700 px-4 py-1.5 rounded-lg transition-colors shadow-sm"
-                              >
-                                Donate Now
-                              </button>
+                                <button
+                                  onClick={() => {
+                                    if (!userProfile?.isProfileComplete) {
+                                      alert('Please complete your profile and eligibility form first.');
+                                      navigate('/profile');
+                                      return;
+                                    }
+                                    setShowEligibilitySummary(req);
+                                  }}
+                                  className="text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-4 py-2 rounded-xl transition-all shadow-md active:scale-95 flex items-center whitespace-nowrap"
+                                >
+                                  Donate Now
+                                </button>
                             </>
                           )}
                         </div>
@@ -753,7 +892,7 @@ export default function Home() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 relative overflow-hidden"
+                  className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-100 relative overflow-hidden"
                 >
                   <div className="flex items-center space-x-4">
                     {donor.photoURL ? (
@@ -904,6 +1043,54 @@ export default function Home() {
         )
       )}
 
+      {recentDonations.length > 0 && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mt-8 overflow-hidden">
+          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center">
+            <Award className="w-6 h-6 mr-2 text-red-500" />
+            রক্ত দিলে হয় না ক্ষতি, জাগ্রত হয় মানবিক অনুভূতি।
+          </h2>
+          <div className="relative h-32 sm:h-24">
+            <AnimatePresence mode="wait">
+              {recentDonations.length > 0 && (
+                <motion.div
+                  key={currentNewsIndex}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.5 }}
+                  className="absolute inset-0 bg-slate-50 rounded-xl p-4 border border-slate-100 flex items-center"
+                >
+                  <p className="text-slate-700 text-sm sm:text-base">
+                    <span className="font-bold text-red-600">
+                      {recentDonations[currentNewsIndex].donorUid ? donors.find(d => d.uid === recentDonations[currentNewsIndex].donorUid)?.displayName || 'A donor' : 'A donor'}
+                    </span> donated <span className="font-bold">{recentDonations[currentNewsIndex].bloodGroup}</span> blood to <span className="font-bold">{recentDonations[currentNewsIndex].recipientName}</span> on {format(recentDonations[currentNewsIndex].date, 'dd MMMM, yyyy')} in {recentDonations[currentNewsIndex].hospitalName || recentDonations[currentNewsIndex].location}. This was their <span className="font-bold">{recentDonations[currentNewsIndex].donorDonationCount || 1}{
+                      (() => {
+                        const n = recentDonations[currentNewsIndex].donorDonationCount || 1;
+                        const s = ["th", "st", "nd", "rd"];
+                        const v = n % 100;
+                        return s[(v - 20) % 10] || s[v] || s[0];
+                      })()
+                    }</span> time blood donation.
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          {recentDonations.length > 1 && (
+            <div className="flex justify-center mt-4 space-x-2">
+              {recentDonations.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentNewsIndex(idx)}
+                  className={`w-2 h-2 rounded-full transition-colors ${idx === currentNewsIndex ? 'bg-red-600' : 'bg-slate-300 hover:bg-slate-400'}`}
+                  aria-label={`Go to slide ${idx + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <FAQAndTerms />
 
       {/* Donate Confirm Modal */}
@@ -958,8 +1145,8 @@ export default function Home() {
               </p>
               
               <div className="space-y-4">
-                <div>
-                  <label htmlFor="fulfilledBy" className="block text-sm font-medium text-slate-700">
+                <div className="relative">
+                  <label htmlFor="fulfilledBy" className="block text-sm font-medium text-slate-700 mb-1">
                     Donor ID or Name
                   </label>
                   <div className="flex gap-2">
@@ -967,9 +1154,12 @@ export default function Home() {
                       type="text"
                       id="fulfilledBy"
                       value={fulfilledBy}
-                      onChange={(e) => setFulfilledBy(e.target.value)}
+                      onChange={(e) => {
+                        setFulfilledBy(e.target.value);
+                        searchDonors(e.target.value);
+                      }}
                       placeholder="e.g. ROKTO-XXXX or Name"
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                     />
                     <button
                       onClick={() => setFulfilledBy('Other Donor')}
@@ -978,29 +1168,44 @@ export default function Home() {
                       Other
                     </button>
                   </div>
+
+                  {/* Search Results Dropdown */}
+                  {donorSearchResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {donorSearchResults.map(donor => (
+                        <button
+                          key={donor.id}
+                          onClick={() => {
+                            setFulfilledBy(donor.donorId || donor.displayName);
+                            setDonorSearchResults([]);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-slate-50 transition-colors flex items-center justify-between"
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold text-slate-900">{donor.displayName}</span>
+                            <span className="text-[10px] text-slate-500 font-mono uppercase">{donor.donorId}</span>
+                          </div>
+                          <span className="text-[10px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded uppercase">{donor.bloodGroup}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {chats.length > 0 && (
+                {getSuggestedDonors().length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Suggested from your chats:</p>
+                    <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Suggested Donors:</p>
                     <div className="flex flex-wrap gap-2">
-                      {chats.map(chat => {
-                        const otherParticipantId = chat.participants.find((p: string) => p !== userProfile?.uid);
-                        const otherParticipantName = chat.participantNames[otherParticipantId];
-                        // Find donor ID for this participant
-                        const donorProfile = donors.find(d => d.uid === otherParticipantId);
-                        const displayId = donorProfile?.donorId || otherParticipantName;
-                        
-                        return (
-                          <button
-                            key={chat.id}
-                            onClick={() => setFulfilledBy(displayId)}
-                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg transition-colors border border-slate-200"
-                          >
-                            {displayId}
-                          </button>
-                        );
-                      })}
+                      {getSuggestedDonors().map((donor: any) => (
+                        <button
+                          key={donor.uid}
+                          onClick={() => setFulfilledBy(donor.donorId || donor.displayName)}
+                          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg transition-colors border border-slate-200 flex flex-col items-start"
+                        >
+                          <span className="font-bold">{donor.displayName}</span>
+                          <span className="text-[9px] opacity-70">{donor.donorId}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -1012,6 +1217,7 @@ export default function Home() {
                 onClick={() => {
                   setFulfillModalOpen(null);
                   setFulfilledBy('');
+                  setDonorSearchResults([]);
                 }}
                 className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500"
               >
@@ -1025,6 +1231,25 @@ export default function Home() {
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Eligibility Summary Modal */}
+      {showEligibilitySummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <EligibilitySummary
+            userProfile={userProfile}
+            onCancel={() => setShowEligibilitySummary(null)}
+            onEdit={() => {
+              setShowEligibilitySummary(null);
+              navigate('/profile');
+            }}
+            onConfirm={() => {
+              const req = showEligibilitySummary;
+              setShowEligibilitySummary(null);
+              setDonateConfirmModal(req);
+            }}
+          />
         </div>
       )}
 

@@ -24,7 +24,7 @@ export default function App() {
     <AuthProvider>
       <ChatProvider>
         <Router>
-          <Toaster position="top-right" />
+          <Toaster position="top-center" />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>

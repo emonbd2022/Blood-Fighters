@@ -25,6 +25,8 @@ export default function Profile() {
   const [fulfillModalOpen, setFulfillModalOpen] = useState<string | null>(null);
   const [fulfilledBy, setFulfilledBy] = useState('');
   const [donors, setDonors] = useState<any[]>([]);
+  const [donorSearchResults, setDonorSearchResults] = useState<any[]>([]);
+  const [isSearchingDonors, setIsSearchingDonors] = useState(false);
   const [chats, setChats] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     bloodGroup: userProfile?.bloodGroup || '',
@@ -253,6 +255,39 @@ export default function Profile() {
     setFulfillModalOpen(requestId);
   };
 
+  const searchDonors = async (term: string) => {
+    if (!term || term.length < 2) {
+      setDonorSearchResults([]);
+      return;
+    }
+    setIsSearchingDonors(true);
+    try {
+      const q = query(
+        collection(db, 'donors'),
+        where('displayName', '>=', term),
+        where('displayName', '<=', term + '\uf8ff')
+      );
+      const qId = query(
+        collection(db, 'donors'),
+        where('donorId', '>=', term.toUpperCase()),
+        where('donorId', '<=', term.toUpperCase() + '\uf8ff')
+      );
+      
+      const [snapName, snapId] = await Promise.all([getDocs(q), getDocs(qId)]);
+      const results = [...snapName.docs, ...snapId.docs].map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      const uniqueResults = results.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+      setDonorSearchResults(uniqueResults);
+    } catch (error) {
+      console.error('Error searching donors:', error);
+    } finally {
+      setIsSearchingDonors(false);
+    }
+  };
+
   const confirmFulfill = async () => {
     if (!fulfillModalOpen || !userProfile) return;
     try {
@@ -261,7 +296,11 @@ export default function Profile() {
       // Find the donor profile if we have a donorId
       let donorUid = '';
       if (fulfilledBy) {
-        const donorMatch = donors.find(d => d.donorId === fulfilledBy || d.displayName === fulfilledBy);
+        // Try to find by donorId first, then by displayName
+        const donorMatch = donors.find(d => 
+          (d.donorId && d.donorId === fulfilledBy) || 
+          (d.displayName && d.displayName === fulfilledBy)
+        );
         if (donorMatch) {
           donorUid = donorMatch.uid;
         }
@@ -290,8 +329,9 @@ export default function Profile() {
 
         // Also update the public donor profile if it exists
         const donorDoc = donors.find(d => d.uid === donorUid);
-        if (donorDoc && donorDoc.id) {
-          await updateDoc(doc(db, 'donors', donorDoc.id), {
+        if (donorDoc) {
+          const donorProfileRef = doc(db, 'donors', donorUid);
+          await updateDoc(donorProfileRef, {
             lastDonationDate: todayIso,
             totalDonations: increment(1),
             donorScore: increment(10),
@@ -302,6 +342,7 @@ export default function Profile() {
         // Create donation record
         const request = myRequests.find(r => r.id === fulfillModalOpen);
         if (request) {
+          const currentDonations = donorDoc ? (donorDoc.totalDonations || 0) + 1 : 1;
           await addDoc(collection(db, 'donation_history'), {
             donorUid: donorUid,
             recipientUid: userProfile.uid,
@@ -310,6 +351,8 @@ export default function Profile() {
             date: serverTimestamp(),
             bloodGroup: request.bloodGroup,
             location: request.location,
+            hospitalName: request.hospitalName || '',
+            donorDonationCount: currentDonations,
             createdAt: serverTimestamp()
           });
         }
@@ -322,10 +365,39 @@ export default function Profile() {
       
       setFulfillModalOpen(null);
       setFulfilledBy('');
+      setDonorSearchResults([]);
     } catch (error) {
       if (error instanceof Error && error.message.includes('Firestore Error')) throw error;
       handleFirestoreError(error, OperationType.UPDATE, `bloodRequests/${fulfillModalOpen}`);
     }
+  };
+
+  const getSuggestedDonors = () => {
+    if (!fulfillModalOpen || !userProfile) return [];
+    const request = myRequests.find(r => r.id === fulfillModalOpen);
+    if (!request) return [];
+
+    const pendingUids = request.pendingDonors || [];
+    const chattedUids = chats.map(chat => chat.participants.find((p: string) => p !== userProfile.uid)).filter(Boolean);
+    const sameGroupUids = donors.filter(d => d.bloodGroup === request.bloodGroup).map(d => d.uid);
+
+    // Combine all unique UIDs
+    const allUids = Array.from(new Set([...pendingUids, ...chattedUids, ...sameGroupUids]));
+
+    // Map to donor objects and sort
+    const suggested = allUids.map(uid => {
+      const donor = donors.find(d => d.uid === uid);
+      if (!donor) return null;
+      
+      let score = 0;
+      if (pendingUids.includes(uid)) score += 100;
+      if (chattedUids.includes(uid)) score += 50;
+      if (sameGroupUids.includes(uid)) score += 10;
+
+      return { ...donor, suggestionScore: score };
+    }).filter(Boolean).sort((a: any, b: any) => (b.suggestionScore || 0) - (a.suggestionScore || 0));
+
+    return suggested.slice(0, 10); // Top 10 suggestions
   };
 
   if (!userProfile) return null;
@@ -337,7 +409,7 @@ export default function Profile() {
         animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
       >
-        <div className="bg-slate-50 px-6 py-8 border-b border-slate-100 flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6 text-center sm:text-left">
+        <div className="bg-slate-50 px-4 sm:px-6 py-8 border-b border-slate-100 flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6 text-center sm:text-left">
           {userProfile.photoURL ? (
             <img 
               src={userProfile.photoURL} 
@@ -350,23 +422,25 @@ export default function Profile() {
               <User className="h-10 w-10 text-slate-400" />
             </div>
           )}
-          <div className="flex flex-col items-center sm:items-start">
-            <div className="flex flex-col sm:flex-row items-center gap-2">
-              <h2 className="text-2xl font-bold text-slate-900">{userProfile.displayName}</h2>
-              {userProfile.isVerified && (
-                <span title="Verified Donor">
-                  <ShieldCheck className="w-5 h-5 text-blue-500 fill-blue-500/10" />
-                </span>
-              )}
-              {userProfile.donorId && (
-                <span className="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg border border-slate-300">
-                  {userProfile.donorId}
-                </span>
-              )}
+          <div className="flex flex-col items-center sm:items-start w-full">
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full justify-center sm:justify-start">
+              <h2 className="text-2xl font-bold text-slate-900 truncate max-w-[200px] sm:max-w-none">{userProfile.displayName}</h2>
+              <div className="flex items-center space-x-2">
+                {userProfile.isVerified && (
+                  <span title="Verified Donor">
+                    <ShieldCheck className="w-5 h-5 text-blue-500 fill-blue-500/10" />
+                  </span>
+                )}
+                {userProfile.donorId && (
+                  <span className="text-[10px] font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg border border-slate-300">
+                    {userProfile.donorId}
+                  </span>
+                )}
+              </div>
             </div>
-            <p className="text-slate-500">{userProfile.email}</p>
+            <p className="text-slate-500 text-sm truncate max-w-[250px] sm:max-w-none">{userProfile.email}</p>
             
-            <div className="flex flex-wrap justify-center sm:justify-start gap-3 mt-3">
+            <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-4">
               <div className="flex items-center bg-white px-3 py-1 rounded-full border border-slate-200 shadow-sm">
                 <Droplet className="w-3.5 h-3.5 mr-1.5 text-red-500" />
                 <span className="text-xs font-bold text-slate-700">{userProfile.totalDonations || 0} Donations</span>
@@ -376,12 +450,12 @@ export default function Profile() {
                 <span className="text-xs font-bold text-slate-700">{userProfile.donorScore || 0} Score</span>
               </div>
               {userProfile.isProfileComplete ? (
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                  <CheckCircle className="w-3 h-3 mr-1" /> Profile Complete
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  <CheckCircle className="w-3 h-3 mr-1" /> Complete
                 </span>
               ) : (
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                  Incomplete Profile
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                  Incomplete
                 </span>
               )}
             </div>
@@ -582,7 +656,7 @@ export default function Profile() {
       >
         <div>
           <h3 className="text-xl font-bold text-slate-900 mb-4">Donation Impact</h3>
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+          <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-100">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <p className="text-sm text-slate-500">Lives Impacted</p>
@@ -686,7 +760,14 @@ export default function Profile() {
                         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-500">
                           <div className="flex items-center">
                             <Calendar className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-                            {req.date}
+                            {req.time ? `${(() => {
+                              const [hours, minutes] = req.time.split(':');
+                              const h = parseInt(hours, 10);
+                              const ampm = h >= 12 ? 'PM' : 'AM';
+                              const h12 = h % 12 || 12;
+                              return `${h12}:${minutes} ${ampm}`;
+                            })()} on ` : ''}
+                            {req.date ? format(new Date(req.date), 'dd MMMM, yyyy') : 'Unknown Date'}
                           </div>
                           <div className="flex items-center">
                             <MapPin className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
@@ -748,7 +829,10 @@ export default function Profile() {
                       type="text"
                       id="fulfilledBy"
                       value={fulfilledBy}
-                      onChange={(e) => setFulfilledBy(e.target.value)}
+                      onChange={(e) => {
+                        setFulfilledBy(e.target.value);
+                        searchDonors(e.target.value);
+                      }}
                       placeholder="e.g. ROKTO-XXXX or Name"
                       className="flex-1 px-3 py-2 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
                     />
@@ -761,27 +845,46 @@ export default function Profile() {
                   </div>
                 </div>
 
-                {chats.length > 0 && (
+                {isSearchingDonors && (
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-emerald-500"></div>
+                    Searching donors...
+                  </div>
+                )}
+
+                {donorSearchResults.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-xl p-2 space-y-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase px-1">Search Results</p>
+                    {donorSearchResults.map(donor => (
+                      <button
+                        key={donor.id}
+                        onClick={() => {
+                          setFulfilledBy(donor.donorId || donor.displayName);
+                          setDonorSearchResults([]);
+                        }}
+                        className="w-full text-left px-2 py-1.5 hover:bg-emerald-50 rounded-lg text-xs flex justify-between items-center group transition-colors"
+                      >
+                        <span className="font-medium text-slate-700 group-hover:text-emerald-700">{donor.displayName}</span>
+                        <span className="text-slate-400 font-mono text-[10px]">{donor.donorId}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {getSuggestedDonors().length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Suggested from your chats:</p>
+                    <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Suggested Donors:</p>
                     <div className="flex flex-wrap gap-2">
-                      {chats.map(chat => {
-                        const otherParticipantId = chat.participants.find((p: string) => p !== userProfile?.uid);
-                        const otherParticipantName = chat.participantNames[otherParticipantId];
-                        // Find donor ID for this participant
-                        const donorProfile = donors.find(d => d.uid === otherParticipantId);
-                        const displayId = donorProfile?.donorId || otherParticipantName;
-                        
-                        return (
-                          <button
-                            key={chat.id}
-                            onClick={() => setFulfilledBy(displayId)}
-                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg transition-colors border border-slate-200"
-                          >
-                            {displayId}
-                          </button>
-                        );
-                      })}
+                      {getSuggestedDonors().map((donor: any) => (
+                        <button
+                          key={donor.uid}
+                          onClick={() => setFulfilledBy(donor.donorId || donor.displayName)}
+                          className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg transition-colors border border-slate-200 flex flex-col items-start"
+                        >
+                          <span className="font-bold">{donor.displayName}</span>
+                          <span className="text-[9px] opacity-70">{donor.donorId}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}

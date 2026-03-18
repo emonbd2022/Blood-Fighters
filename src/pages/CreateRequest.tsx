@@ -5,7 +5,7 @@ import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHand
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Droplet, AlertCircle, Calendar, MapPin, Phone, User, Activity, AlertTriangle, Navigation, MessageCircle } from 'lucide-react';
+import { Droplet, AlertCircle, Calendar, MapPin, Phone, User, Activity, AlertTriangle, Navigation, MessageCircle, Clock } from 'lucide-react';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
@@ -23,6 +23,7 @@ export default function CreateRequest() {
     bloodGroup: '',
     amount: '1 Bag',
     date: '',
+    time: '',
     location: '',
     contact: userProfile?.phone || '',
     urgency: 'Medium',
@@ -52,6 +53,7 @@ export default function CreateRequest() {
               bloodGroup: data.bloodGroup || '',
               amount: data.amount || '1 Bag',
               date: data.date || '',
+              time: data.time || '',
               location: data.location || '',
               contact: data.contact || '',
               urgency: data.urgency || 'Medium',
@@ -314,6 +316,20 @@ export default function CreateRequest() {
                   onChange={handleChange}
                   required
                   min={new Date().toISOString().split('T')[0]}
+                  className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="time" className="block text-sm font-medium text-slate-700 flex items-center">
+                  <Clock className="w-4 h-4 mr-2 text-slate-400" /> রক্তদানের সময় (Time)
+                </label>
+                <input
+                  type="time"
+                  id="time"
+                  name="time"
+                  value={formData.time}
+                  onChange={handleChange}
                   className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                 />
               </div>

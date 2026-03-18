@@ -26,15 +26,15 @@ export default function Login() {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-slate-100"
+        className="max-w-md w-full space-y-8 bg-white p-6 sm:p-10 rounded-2xl shadow-xl border border-slate-100"
       >
         <div className="text-center">
           <Droplet className="mx-auto h-16 w-16 text-red-600 fill-red-600" />
-          <h2 className="mt-6 text-3xl font-extrabold text-slate-900 tracking-tight">
-            Welcome to Rokto
+          <h2 className="mt-6 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            Blood Fighters of Bhairab
           </h2>
           <p className="mt-2 text-sm text-slate-600">
-            A modern platform for blood donation requests and matching.
+            A modern platform for blood donation requests and matching in Bhairab.
           </p>
         </div>
         

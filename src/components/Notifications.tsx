@@ -128,8 +128,8 @@ export default function Notifications() {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden z-50">
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+        <div className="fixed inset-x-4 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:mt-2 w-auto sm:w-96 bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden z-50 max-h-[calc(100vh-5rem)] flex flex-col">
+          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">
             <h3 className="font-semibold text-slate-900">Notifications</h3>
             {unreadCount > 0 && (
               <span className="text-xs font-medium bg-red-100 text-red-800 px-2 py-0.5 rounded-full">
@@ -137,7 +137,7 @@ export default function Notifications() {
               </span>
             )}
           </div>
-          <div className="max-h-96 overflow-y-auto">
+          <div className="overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="p-6 text-center text-sm text-slate-500">
                 No new matching requests for your blood group.
