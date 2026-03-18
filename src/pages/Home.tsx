@@ -11,8 +11,9 @@ import L from 'leaflet';
 import { collection, query, getDocs, orderBy, doc, updateDoc, serverTimestamp, where, addDoc, arrayUnion } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import EligibilityForm from '../components/EligibilityForm';
+import FAQAndTerms from '../components/FAQAndTerms';
 import { Hospital } from 'lucide-react';
 
 // Fix for default marker icon in react-leaflet
@@ -40,6 +41,7 @@ export default function Home() {
   const [donors, setDonors] = useState<any[]>([]);
   const { userProfile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [bloodGroupFilter, setBloodGroupFilter] = useState('');
@@ -51,7 +53,23 @@ export default function Home() {
   const [chats, setChats] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'fulfilled'>('all');
   const [activeTab, setActiveTab] = useState<'requests' | 'donors'>('requests');
+  const [highlightedRequestId, setHighlightedRequestId] = useState<string | null>(null);
   const { setChatRecipient, sendMessage } = useChat();
+
+  useEffect(() => {
+    if (location.state?.highlightRequestId) {
+      setHighlightedRequestId(location.state.highlightRequestId);
+      // Scroll to the element if it exists
+      setTimeout(() => {
+        const element = document.getElementById(`request-${location.state.highlightRequestId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+      // Clear state so it doesn't highlight again on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
   
   // Pagination state
   const [requestPage, setRequestPage] = useState(1);
@@ -407,6 +425,15 @@ export default function Home() {
                   <option key={bg} value={bg}>{bg}</option>
                 ))}
               </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base border-slate-200 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm rounded-xl bg-white shadow-sm"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Not Fulfilled</option>
+                <option value="fulfilled">Fulfilled</option>
+              </select>
             </>
           )}
           {activeTab === 'donors' && (
@@ -454,10 +481,16 @@ export default function Home() {
               return (
                 <motion.div
                   key={req.id}
+                  id={`request-${req.id}`}
                   initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  animate={{ 
+                    opacity: 1, 
+                    y: 0,
+                    scale: highlightedRequestId === req.id ? 1.02 : 1,
+                    borderColor: highlightedRequestId === req.id ? '#ef4444' : (isFulfilled ? '#d1fae5' : '#f1f5f9')
+                  }}
                   transition={{ delay: index * 0.05 }}
-                  className={`bg-white rounded-2xl p-6 shadow-sm border ${isFulfilled ? 'border-emerald-100 bg-emerald-50/30' : 'border-slate-100'} relative overflow-hidden`}
+                  className={`bg-white rounded-2xl p-6 shadow-sm border ${isFulfilled ? 'border-emerald-100 bg-emerald-50/30' : 'border-slate-100'} relative overflow-hidden ${highlightedRequestId === req.id ? 'ring-2 ring-red-500 ring-offset-2' : ''}`}
                 >
                   {isFulfilled && (
                     <div className="absolute top-0 right-0 bg-emerald-500 text-white px-3 py-1 rounded-bl-xl text-xs font-bold uppercase tracking-wider flex items-center">
@@ -840,6 +873,8 @@ export default function Home() {
         )
       )}
 
+      <FAQAndTerms />
+
       {/* Donate Confirm Modal */}
       {donateConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
@@ -896,14 +931,22 @@ export default function Home() {
                   <label htmlFor="fulfilledBy" className="block text-sm font-medium text-slate-700">
                     Donor ID or Name
                   </label>
-                  <input
-                    type="text"
-                    id="fulfilledBy"
-                    value={fulfilledBy}
-                    onChange={(e) => setFulfilledBy(e.target.value)}
-                    placeholder="e.g. ROKTO-XXXX or Name"
-                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      id="fulfilledBy"
+                      value={fulfilledBy}
+                      onChange={(e) => setFulfilledBy(e.target.value)}
+                      placeholder="e.g. ROKTO-XXXX or Name"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                    />
+                    <button
+                      onClick={() => setFulfilledBy('Other Donor')}
+                      className="px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition-colors"
+                    >
+                      Other
+                    </button>
+                  </div>
                 </div>
 
                 {chats.length > 0 && (

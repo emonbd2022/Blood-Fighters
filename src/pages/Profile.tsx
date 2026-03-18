@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { User, MapPin, Phone, Droplet, CheckCircle, Calendar, Clock, CheckCircle2, FileText, Navigation, MessageCircle, Mail } from 'lucide-react';
 import { format } from 'date-fns';
 import EligibilityForm from '../components/EligibilityForm';
-import { doc, updateDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useNavigate } from 'react-router-dom';
@@ -22,6 +22,10 @@ export default function Profile() {
   const [donationHistory, setDonationHistory] = useState<DonationRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [showEligibilityForm, setShowEligibilityForm] = useState(!userProfile?.isProfileComplete);
+  const [fulfillModalOpen, setFulfillModalOpen] = useState<string | null>(null);
+  const [fulfilledBy, setFulfilledBy] = useState('');
+  const [donors, setDonors] = useState<any[]>([]);
+  const [chats, setChats] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     bloodGroup: userProfile?.bloodGroup || '',
     location: userProfile?.location || '',
@@ -60,6 +64,22 @@ export default function Profile() {
     };
 
     fetchDonationHistory();
+  }, [userProfile?.uid]);
+
+  useEffect(() => {
+    const fetchDonorsAndChats = async () => {
+      if (!userProfile?.uid) return;
+      try {
+        const donorsSnap = await getDocs(collection(db, 'donors'));
+        setDonors(donorsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+        const chatsSnap = await getDocs(query(collection(db, 'chats'), where('participants', 'array-contains', userProfile.uid)));
+        setChats(chatsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (error) {
+        console.error('Error fetching donors/chats:', error);
+      }
+    };
+    fetchDonorsAndChats();
   }, [userProfile?.uid]);
 
   useEffect(() => {
@@ -223,21 +243,78 @@ export default function Profile() {
     }
   };
 
-  const handleFulfill = async (requestId: string) => {
-    if (!userProfile) return;
+  const handleFulfill = (requestId: string) => {
+    setFulfillModalOpen(requestId);
+  };
+
+  const confirmFulfill = async () => {
+    if (!fulfillModalOpen || !userProfile) return;
     try {
-      const requestRef = doc(db, 'bloodRequests', requestId);
+      const requestRef = doc(db, 'bloodRequests', fulfillModalOpen);
+      
+      // Find the donor profile if we have a donorId
+      let donorUid = '';
+      if (fulfilledBy) {
+        const donorMatch = donors.find(d => d.donorId === fulfilledBy || d.displayName === fulfilledBy);
+        if (donorMatch) {
+          donorUid = donorMatch.uid;
+        }
+      }
+
       await updateDoc(requestRef, {
         status: 'fulfilled',
+        fulfilledBy: fulfilledBy || 'Other Donor',
         updatedAt: serverTimestamp()
       });
+
+      // If we identified a donor, update their last donation date and create a donation record
+      if (donorUid) {
+        const userRef = doc(db, 'users', donorUid);
+        const donorRef = doc(db, 'donors', donorUid);
+        
+        const today = new Date();
+        const todayIso = today.toISOString();
+        
+        await updateDoc(userRef, {
+          lastDonationDate: todayIso,
+          updatedAt: serverTimestamp()
+        });
+
+        // Also update the public donor profile if it exists
+        const donorDoc = donors.find(d => d.uid === donorUid);
+        if (donorDoc && donorDoc.id) {
+          await updateDoc(doc(db, 'donors', donorDoc.id), {
+            lastDonationDate: todayIso,
+            updatedAt: serverTimestamp()
+          });
+        }
+
+        // Create donation record
+        const request = myRequests.find(r => r.id === fulfillModalOpen);
+        if (request) {
+          await addDoc(collection(db, 'donation_history'), {
+            donorUid: donorUid,
+            recipientUid: userProfile.uid,
+            recipientName: userProfile.displayName,
+            requestId: fulfillModalOpen,
+            date: serverTimestamp(),
+            bloodGroup: request.bloodGroup,
+            location: request.location,
+            createdAt: serverTimestamp()
+          });
+        }
+      }
       
+      // Update local state
       setMyRequests(myRequests.map(req => 
-        req.id === requestId ? { ...req, status: 'fulfilled' } : req
+        req.id === fulfillModalOpen ? { ...req, status: 'fulfilled', fulfilledBy: fulfilledBy || 'Other Donor' } : req
       ));
+      
+      setFulfillModalOpen(null);
+      setFulfilledBy('');
     } catch (error) {
       if (error instanceof Error && error.message.includes('Firestore Error')) throw error;
-      handleFirestoreError(error, OperationType.UPDATE, `bloodRequests/${requestId}`);
+      handleFirestoreError(error, OperationType.UPDATE, `bloodRequests/${fulfillModalOpen}`);
     }
   };
 
@@ -250,7 +327,7 @@ export default function Profile() {
         animate={{ opacity: 1, y: 0 }}
         className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden"
       >
-        <div className="bg-slate-50 px-6 py-8 border-b border-slate-100 flex items-center space-x-6">
+        <div className="bg-slate-50 px-6 py-8 border-b border-slate-100 flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6 text-center sm:text-left">
           {userProfile.photoURL ? (
             <img 
               src={userProfile.photoURL} 
@@ -263,8 +340,8 @@ export default function Profile() {
               <User className="h-10 w-10 text-slate-400" />
             </div>
           )}
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col items-center sm:items-start">
+            <div className="flex flex-col sm:flex-row items-center gap-2">
               <h2 className="text-2xl font-bold text-slate-900">{userProfile.displayName}</h2>
               {userProfile.donorId && (
                 <span className="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded-lg border border-slate-300">
@@ -301,7 +378,7 @@ export default function Profile() {
                 <select
                   id="bloodGroup"
                   name="bloodGroup"
-                  value={formData.bloodGroup || ''}
+                  value={formData.bloodGroup}
                   onChange={handleChange}
                   required
                   className="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-slate-300 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm rounded-xl border bg-white shadow-sm"
@@ -321,7 +398,7 @@ export default function Profile() {
                   type="tel"
                   id="phone"
                   name="phone"
-                  value={formData.phone || ''}
+                  value={formData.phone}
                   onChange={handleChange}
                   required
                   placeholder="e.g. 01915-582689"
@@ -337,7 +414,7 @@ export default function Profile() {
                   type="tel"
                   id="whatsapp"
                   name="whatsapp"
-                  value={formData.whatsapp || ''}
+                  value={formData.whatsapp}
                   onChange={handleChange}
                   placeholder="e.g. 01915-582689"
                   className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
@@ -352,7 +429,7 @@ export default function Profile() {
                   type="text"
                   id="messengerId"
                   name="messengerId"
-                  value={formData.messengerId || ''}
+                  value={formData.messengerId}
                   onChange={handleChange}
                   placeholder="e.g. username"
                   className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
@@ -367,7 +444,7 @@ export default function Profile() {
                   type="email"
                   id="gmail"
                   name="gmail"
-                  value={formData.gmail || ''}
+                  value={formData.gmail}
                   onChange={handleChange}
                   placeholder="e.g. example@gmail.com"
                   className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
@@ -382,7 +459,7 @@ export default function Profile() {
                   type="date"
                   id="lastDonationDate"
                   name="lastDonationDate"
-                  value={['less_than_3_months', '3_to_6_months', 'more_than_6_months'].includes(formData.lastDonationDate) ? '' : (formData.lastDonationDate || '')}
+                  value={['less_than_3_months', '3_to_6_months', 'more_than_6_months'].includes(formData.lastDonationDate) ? '' : formData.lastDonationDate}
                   onChange={handleChange}
                   className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                 />
@@ -398,7 +475,7 @@ export default function Profile() {
                     type="text"
                     id="location"
                     name="location"
-                    value={formData.location || ''}
+                    value={formData.location}
                     onChange={handleChange}
                     required
                     placeholder="e.g. Dhaka Jatrabari"
@@ -587,6 +664,91 @@ export default function Profile() {
           )}
         </div>
       </motion.div>
+
+      {/* Fulfill Modal */}
+      {fulfillModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
+          >
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Mark Request as Fulfilled</h3>
+              <p className="text-sm text-slate-500 mb-4">
+                Please enter the User ID or name of the donor who fulfilled this request.
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="fulfilledBy" className="block text-sm font-medium text-slate-700">
+                    Donor ID or Name
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      id="fulfilledBy"
+                      value={fulfilledBy}
+                      onChange={(e) => setFulfilledBy(e.target.value)}
+                      placeholder="e.g. ROKTO-XXXX or Name"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                    />
+                    <button
+                      onClick={() => setFulfilledBy('Other Donor')}
+                      className="px-3 py-2 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 transition-colors"
+                    >
+                      Other
+                    </button>
+                  </div>
+                </div>
+
+                {chats.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">Suggested from your chats:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {chats.map(chat => {
+                        const otherParticipantId = chat.participants.find((p: string) => p !== userProfile?.uid);
+                        const otherParticipantName = chat.participantNames[otherParticipantId];
+                        // Find donor ID for this participant
+                        const donorProfile = donors.find(d => d.uid === otherParticipantId);
+                        const displayId = donorProfile?.donorId || otherParticipantName;
+                        
+                        return (
+                          <button
+                            key={chat.id}
+                            onClick={() => setFulfilledBy(displayId)}
+                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded-lg transition-colors border border-slate-200"
+                          >
+                            {displayId}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="bg-slate-50 px-6 py-4 flex justify-end space-x-3 border-t border-slate-100">
+              <button
+                onClick={() => {
+                  setFulfillModalOpen(null);
+                  setFulfilledBy('');
+                }}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmFulfill}
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 border border-transparent rounded-xl shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+              >
+                Confirm Fulfillment
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

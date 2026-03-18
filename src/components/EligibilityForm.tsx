@@ -225,7 +225,7 @@ export default function EligibilityForm({ initialData, onSubmit, onCancel }: Eli
                 <div className="space-y-4">
                   <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2">1. Basic Information</h3>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700">Age / বয়স</label>
                       <input
@@ -248,7 +248,7 @@ export default function EligibilityForm({ initialData, onSubmit, onCancel }: Eli
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700">Blood Group / রক্তের গ্রুপ</label>
                       <select
@@ -274,7 +274,7 @@ export default function EligibilityForm({ initialData, onSubmit, onCancel }: Eli
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700">Phone / ফোন নম্বর</label>
                       <input

@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { collection, query, where, getDocs, orderBy, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
+import { useNavigate } from 'react-router-dom';
 
 export default function Notifications() {
   const { userProfile, refreshProfile } = useAuth();
@@ -13,11 +14,19 @@ export default function Notifications() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const prevUnreadCount = useRef(0);
+  const navigate = useNavigate();
 
   const playNotificationSound = () => {
     try {
-      const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
-      audio.play().catch(e => console.error("Error playing sound:", e));
+      // Using a more standard notification sound URL
+      const audio = new Audio('https://notificationsounds.com/storage/sounds/file-sounds-1150-pristine.mp3');
+      audio.volume = 0.5;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.log("Autoplay prevented or sound error:", error);
+        });
+      }
     } catch (error) {
       console.error("Audio error:", error);
     }
@@ -100,6 +109,11 @@ export default function Notifications() {
     }
   };
 
+  const handleNotificationClick = (requestId: string) => {
+    setIsOpen(false);
+    navigate('/', { state: { highlightRequestId: requestId } });
+  };
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button 
@@ -138,9 +152,10 @@ export default function Notifications() {
                   (req.createdAt && req.createdAt.getTime() > new Date(userProfile.lastReadNotifications).getTime());
 
                 return (
-                  <div 
+                  <button 
                     key={req.id} 
-                    className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${isNew ? 'bg-red-50/30' : ''}`}
+                    onClick={() => handleNotificationClick(req.id)}
+                    className={`w-full text-left p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors ${isNew ? 'bg-red-50/30' : ''}`}
                   >
                     <p className="text-sm text-slate-800">
                       <span className="font-semibold">{req.requesterName || 'Unknown'}</span> needs <span className="font-bold text-red-600">{req.bloodGroup}</span> blood.
@@ -151,7 +166,7 @@ export default function Notifications() {
                       </span>
                       <span>🕒 {req.createdAt ? format(req.createdAt, 'MMM d, h:mm a') : 'Recently'}</span>
                     </div>
-                  </div>
+                  </button>
                 );
               })
             )}
