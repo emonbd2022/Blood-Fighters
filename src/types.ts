@@ -10,6 +10,7 @@ export interface UserProfile {
   whatsapp?: string;
   messengerId?: string;
   gmail?: string;
+  gender?: string;
   fcmToken?: string;
   eligibilityData?: any;
   lastDonationDate?: string;
@@ -31,6 +32,7 @@ export interface Donor {
   bloodGroup: string;
   location: string;
   phone?: string;
+  gender?: string;
   whatsapp?: string;
   messengerId?: string;
   gmail?: string;
@@ -53,6 +55,7 @@ export interface DonationRecord {
   bloodGroup: string;
   location: string;
   hospitalName?: string;
+  donorGender?: string;
   donorDonationCount?: number;
   createdAt: Date;
 }

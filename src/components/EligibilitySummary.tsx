@@ -48,7 +48,15 @@ export default function EligibilitySummary({ userProfile, onConfirm, onCancel, o
               </div>
               <div className="flex items-center space-x-2">
                 <Calendar className="w-4 h-4 text-blue-500" />
-                <span className="text-sm font-medium text-slate-700">Last: <span className="font-bold">{lastDonation ? format(lastDonation, 'dd MMM yyyy') : 'Never'}</span></span>
+                <span className="text-sm font-medium text-slate-700">Last: <span className="font-bold">{(() => {
+                  if (!lastDonation) return 'Never';
+                  try {
+                    if (isNaN(lastDonation.getTime())) return 'Unknown';
+                    return format(lastDonation, 'dd MMM yyyy');
+                  } catch (e) {
+                    return 'Unknown';
+                  }
+                })()}</span></span>
               </div>
             </div>
           </div>

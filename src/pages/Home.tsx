@@ -710,15 +710,6 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                     <div className="flex items-center text-slate-600 text-sm mt-3">
                       <Calendar className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
                       <span>
-                        {req.time ? `${(() => {
-                          if (!req.time.includes(':')) return req.time;
-                          const [hours, minutes] = req.time.split(':');
-                          const h = parseInt(hours, 10);
-                          if (isNaN(h)) return req.time;
-                          const ampm = h >= 12 ? 'PM' : 'AM';
-                          const h12 = h % 12 || 12;
-                          return `${h12}:${minutes} ${ampm}`;
-                        })()} on ` : ''}
                         {req.date ? (() => {
                           try {
                             return format(new Date(req.date), 'dd MMMM, yyyy');
@@ -991,7 +982,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                   <div className="mt-4 space-y-2 text-sm text-slate-600">
                     <div className="flex items-start">
                       <MapPin className="w-4 h-4 mr-2 text-slate-400 mt-0.5 flex-shrink-0" />
-                      <span title={donor.location}>{donor.location}</span>
+                      <span className="break-words" title={donor.location}>{donor.location}</span>
                     </div>
                     {donor.phone && (
                       <div className="flex items-center">

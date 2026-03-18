@@ -34,6 +34,7 @@ export default function Profile() {
     bloodGroup: userProfile?.bloodGroup || '',
     location: userProfile?.location || '',
     phone: userProfile?.phone || '',
+    gender: userProfile?.gender || '',
     whatsapp: userProfile?.whatsapp || '',
     messengerId: userProfile?.messengerId || '',
     gmail: userProfile?.gmail || '',
@@ -166,6 +167,7 @@ export default function Profile() {
         bloodGroup: formData.bloodGroup,
         location: formData.location,
         phone: formData.phone,
+        gender: formData.gender,
         whatsapp: formData.whatsapp,
         messengerId: formData.messengerId,
         gmail: formData.gmail,
@@ -239,6 +241,7 @@ export default function Profile() {
         bloodGroup: eligibilityData.bloodGroup,
         location: eligibilityData.location,
         phone: eligibilityData.phone,
+        gender: eligibilityData.gender,
         whatsapp: userProfile.whatsapp || '',
         messengerId: userProfile.messengerId || '',
         gmail: userProfile.gmail || '',
@@ -518,6 +521,25 @@ export default function Profile() {
                   {BLOOD_GROUPS.map(bg => (
                     <option key={bg} value={bg}>{bg}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="gender" className="block text-sm font-medium text-slate-700 flex items-center">
+                  <User className="w-4 h-4 mr-2 text-slate-400" /> Gender
+                </label>
+                <select
+                  id="gender"
+                  name="gender"
+                  value={formData.gender}
+                  onChange={handleChange}
+                  required
+                  className="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-slate-300 focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm rounded-xl border bg-white shadow-sm"
+                >
+                  <option value="" disabled>Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
                 </select>
               </div>
 
