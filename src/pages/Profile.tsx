@@ -4,6 +4,7 @@ import { BloodRequest } from '../types';
 import { motion } from 'framer-motion';
 import { User, MapPin, Phone, Droplet, CheckCircle, Calendar, Clock, CheckCircle2, FileText, Navigation, MessageCircle, Mail, ShieldCheck, Award } from 'lucide-react';
 import { format } from 'date-fns';
+import { checkEligibility } from '../utils/eligibility';
 import EligibilityForm from '../components/EligibilityForm';
 import { doc, updateDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp, addDoc, increment, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -149,20 +150,15 @@ export default function Profile() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
+    
+    // Phone and WhatsApp validation (11 digits only)
+    if (name === 'phone' || name === 'whatsapp') {
+      const cleaned = value.replace(/\D/g, '').slice(0, 11);
+      setFormData(prev => ({ ...prev, [name]: cleaned }));
+      return;
+    }
 
-  const checkEligibility = (dateStr?: string) => {
-    if (!dateStr) return true;
-    if (dateStr === 'less_than_3_months') return false;
-    if (dateStr === '3_to_6_months' || dateStr === 'more_than_6_months') return true;
-    
-    const lastDonation = new Date(dateStr);
-    if (isNaN(lastDonation.getTime())) return true; // fallback if invalid date
-    
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-    return lastDonation < threeMonthsAgo;
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

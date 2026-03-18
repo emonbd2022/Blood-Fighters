@@ -50,9 +50,6 @@ export default function Login() {
             </span>
             Sign in with Google
           </button>
-          <div className="text-xs text-slate-500 text-center mt-4 p-3 bg-slate-50 rounded-lg border border-slate-100">
-            <strong>Note for Vercel Deployments:</strong> If login fails, ensure your Vercel domain is added to <strong>Authorized domains</strong> in the Firebase Console (Authentication &gt; Settings &gt; Authorized domains).
-          </div>
         </div>
       </motion.div>
     </div>

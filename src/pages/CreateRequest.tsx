@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, updateDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Droplet, AlertCircle, Calendar, MapPin, Phone, User, Activity, AlertTriangle, Navigation, MessageCircle, Clock } from 'lucide-react';
+import { checkEligibility } from '../utils/eligibility';
 
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
@@ -23,6 +24,7 @@ export default function CreateRequest() {
     bloodGroup: '',
     amount: '1 Bag',
     date: '',
+    time: '',
     location: '',
     contact: userProfile?.phone || '',
     urgency: 'Medium',
@@ -52,6 +54,7 @@ export default function CreateRequest() {
               bloodGroup: data.bloodGroup || '',
               amount: data.amount || '1 Bag',
               date: data.date || '',
+              time: data.time || '',
               location: data.location || '',
               contact: data.contact || '',
               urgency: data.urgency || 'Medium',
@@ -108,6 +111,14 @@ export default function CreateRequest() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    
+    // Phone and WhatsApp validation (11 digits only)
+    if (name === 'contact' || name === 'whatsapp') {
+      const cleaned = value.replace(/\D/g, '').slice(0, 11);
+      setFormData(prev => ({ ...prev, [name]: cleaned }));
+      return;
+    }
+
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -146,6 +157,34 @@ export default function CreateRequest() {
         });
 
         if (response.id) {
+          // Send notifications to eligible donors with the same blood group
+          try {
+            const donorsQuery = query(
+              collection(db, 'users'),
+              where('bloodGroup', '==', formData.bloodGroup),
+              where('isProfileComplete', '==', true)
+            );
+            const donorsSnapshot = await getDocs(donorsQuery);
+            
+            const notificationPromises = donorsSnapshot.docs
+              .map(doc => ({ ...doc.data(), uid: doc.id }))
+              .filter((donor: any) => donor.uid !== userProfile.uid && checkEligibility(donor.lastDonationDate))
+              .map(donor => addDoc(collection(db, 'notifications'), {
+                userId: donor.uid,
+                title: 'New Blood Request',
+                message: `A new ${formData.bloodGroup} blood request has been posted near ${formData.location}.`,
+                type: 'new_request',
+                requestId: response.id,
+                fromUid: userProfile.uid,
+                read: false,
+                createdAt: serverTimestamp()
+              }));
+            
+            await Promise.all(notificationPromises);
+          } catch (error) {
+            console.error('Error sending notifications:', error);
+          }
+
           navigate('/');
         } else {
           console.error("Failed to create request");
@@ -314,6 +353,20 @@ export default function CreateRequest() {
                   onChange={handleChange}
                   required
                   min={new Date().toISOString().split('T')[0]}
+                  className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="time" className="block text-sm font-medium text-slate-700 flex items-center">
+                  <Clock className="w-4 h-4 mr-2 text-slate-400" /> রক্তদানের সময় (Time - Optional)
+                </label>
+                <input
+                  type="time"
+                  id="time"
+                  name="time"
+                  value={formData.time}
+                  onChange={handleChange}
                   className="mt-1 block w-full px-3 py-2.5 border border-slate-300 rounded-xl shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                 />
               </div>

@@ -5,6 +5,7 @@ import { BloodRequest } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Calendar, Phone, Droplet, Clock, CheckCircle2, Search, Share2, Check, Map as MapIcon, List, AlertTriangle, Navigation, MessageCircle, Mail, ChevronLeft, ChevronRight, User, AlertCircle, ShieldCheck, Award } from 'lucide-react';
 import { format } from 'date-fns';
+import { checkEligibility } from '../utils/eligibility';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -257,19 +258,6 @@ export default function Home() {
     // Then by date
     return b.createdAt.getTime() - a.createdAt.getTime();
   });
-
-  const checkEligibility = (dateStr?: string) => {
-    if (!dateStr) return true;
-    if (dateStr === 'less_than_3_months') return false;
-    if (dateStr === '3_to_6_months' || dateStr === 'more_than_6_months') return true;
-    
-    const lastDonation = new Date(dateStr);
-    if (isNaN(lastDonation.getTime())) return true; // fallback if invalid date
-    
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-    return lastDonation < threeMonthsAgo;
-  };
 
   const formatDonationDate = (dateStr: string) => {
     if (dateStr === 'less_than_3_months') return 'Less than 3 months ago';
@@ -686,17 +674,25 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                       </div>
                     )}
 
-                    <div className="flex items-center text-slate-600 text-sm mt-3">
-                      <Calendar className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
-                      <span>
-                        {req.date ? (() => {
-                          try {
-                            return format(new Date(req.date), 'dd MMMM, yyyy');
-                          } catch (e) {
-                            return 'Unknown Date';
-                          }
-                        })() : 'Unknown Date'}
-                      </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center text-slate-600 text-sm mt-3 gap-3 sm:gap-6">
+                      <div className="flex items-center">
+                        <Calendar className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
+                        <span>
+                          {req.date ? (() => {
+                            try {
+                              return format(new Date(req.date), 'dd MMMM, yyyy');
+                            } catch (e) {
+                              return 'Unknown Date';
+                            }
+                          })() : 'Unknown Date'}
+                        </span>
+                      </div>
+                      {req.time && (
+                        <div className="flex items-center">
+                          <Clock className="w-4 h-4 mr-2 text-slate-400 shrink-0" />
+                          <span>{req.time}</span>
+                        </div>
+                      )}
                     </div>
                     
                     {isFulfilled && req.fulfilledBy && (
@@ -725,7 +721,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                         </div>
                         <div className="flex items-center space-x-1">
                           {req.whatsapp && (
-                            <a href={`https://wa.me/${req.whatsapp}`} target="_blank" rel="noopener noreferrer" className="text-green-500 hover:text-green-600 p-1 hover:bg-green-50 rounded-lg transition-colors" title="WhatsApp">
+                            <a href={`https://wa.me/88${req.whatsapp}`} target="_blank" rel="noopener noreferrer" className="text-green-500 hover:text-green-600 p-1 hover:bg-green-50 rounded-lg transition-colors" title="WhatsApp">
                               <MessageCircle className="w-4 h-4" />
                             </a>
                           )}
@@ -982,7 +978,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
                       {isEligible && (
                         <>
                           {donor.whatsapp && (
-                            <a href={`https://wa.me/${donor.whatsapp}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors" title="WhatsApp">
+                            <a href={`https://wa.me/88${donor.whatsapp}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors" title="WhatsApp">
                               <MessageCircle className="w-4 h-4" />
                             </a>
                           )}
