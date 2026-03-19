@@ -866,7 +866,7 @@ Total Donations: ${userProfile.totalDonations || 0}`;
             <h3 className="mt-2 text-sm font-medium text-slate-900">Donor list is hidden</h3>
             <p className="mt-1 text-sm text-slate-500">You must create a blood request first to see available donors.</p>
             <button
-              onClick={() => navigate('/create-request')}
+              onClick={() => navigate('/request')}
               className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-xl shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
             >
               Create Request Now

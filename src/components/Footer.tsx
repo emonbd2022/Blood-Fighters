@@ -101,7 +101,7 @@ export default function Footer() {
             <ul className="space-y-3 text-sm">
               <li><Link to="/" className="hover:text-white transition-colors">হোম</Link></li>
               <li><Link to="/profile" className="hover:text-white transition-colors">আমার প্রোফাইল</Link></li>
-              <li><Link to="/create-request" className="hover:text-white transition-colors">রক্তের আবেদন করুন</Link></li>
+              <li><Link to="/request" className="hover:text-white transition-colors">রক্তের আবেদন করুন</Link></li>
               <li><Link to="/faq" className="hover:text-white transition-colors">রক্তদান সম্পর্কে জিজ্ঞাসা (FAQ)</Link></li>
               <li><Link to="/terms" className="hover:text-white transition-colors">শর্তাবলী ও নীতিমালা</Link></li>
             </ul>
